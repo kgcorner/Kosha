@@ -83,6 +83,20 @@ CREATE TABLE IF NOT EXISTS stock_fundamentals (
   FOREIGN KEY(stock_id) REFERENCES stocks(id) ON DELETE CASCADE
 );
 
+-- Cached on-demand LLM analyses, one per stock per "held" flag. Reused while
+-- input_hash (digest of fund signal + fundamentals + model + prompt) matches.
+CREATE TABLE IF NOT EXISTS stock_analyses (
+  stock_id INTEGER NOT NULL,
+  held INTEGER NOT NULL,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  input_hash TEXT NOT NULL,
+  result TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (stock_id, held),
+  FOREIGN KEY(stock_id) REFERENCES stocks(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS scrape_jobs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   status TEXT NOT NULL DEFAULT 'queued',

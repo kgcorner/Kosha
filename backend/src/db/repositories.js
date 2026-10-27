@@ -180,6 +180,26 @@ export function createRepositories(db) {
         db.prepare("UPDATE stocks SET symbol = ? WHERE id = ?").run(symbol, stockId);
       }
     },
+    analyses: {
+      get(stockId, held) {
+        return parseAnalysisRow(db.prepare(
+          "SELECT stock_id, held, provider, model, input_hash, result, created_at FROM stock_analyses WHERE stock_id = ? AND held = ?"
+        ).get(stockId, held ? 1 : 0));
+      },
+      upsert(stockId, held, { provider, model, inputHash, result }) {
+        db.prepare(`
+          INSERT INTO stock_analyses (stock_id, held, provider, model, input_hash, result, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(stock_id, held) DO UPDATE SET
+            provider = excluded.provider,
+            model = excluded.model,
+            input_hash = excluded.input_hash,
+            result = excluded.result,
+            created_at = excluded.created_at
+        `).run(stockId, held ? 1 : 0, provider, model, inputHash, JSON.stringify(result));
+        return this.get(stockId, held);
+      }
+    },
     fundamentals: {
       list(stockId) {
         return db.prepare(
@@ -507,4 +527,9 @@ function parseFundamentalsRow(row) {
     payload = row.payload;
   }
   return { ...row, payload };
+}
+
+function parseAnalysisRow(row) {
+  if (!row) return null;
+  return { ...row, held: Boolean(row.held), result: JSON.parse(row.result) };
 }

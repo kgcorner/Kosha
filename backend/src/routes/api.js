@@ -2,7 +2,7 @@ import { Router } from "express";
 import { serializeJob } from "../services/scrapeJob.js";
 import { DRY_RUN_DEFAULT_LIMIT, DRY_RUN_MAX_LIMIT } from "../services/scrapeDryRun.js";
 
-export function createApiRouter({ repositories, scrapeJob, dryRunService, fundamentalsService = null }) {
+export function createApiRouter({ repositories, scrapeJob, dryRunService, fundamentalsService = null, analysisService = null }) {
   const router = Router();
 
   router.get("/stocks/leaderboard", (request, response, next) => {
@@ -67,6 +67,35 @@ export function createApiRouter({ repositories, scrapeJob, dryRunService, fundam
           response.json(result);
         })
         .catch(next);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // On-demand LLM verdict for one stock from Kosha's fund signal + fundamentals.
+  //   ?held=true     the user owns it → HOLD/SELL (default BUY/IGNORE)
+  //   ?refresh=true  re-run the model even if inputs are unchanged
+  // Cached per (stock, held) until the inputs change.
+  router.get("/stocks/:id/analysis", (request, response, next) => {
+    try {
+      if (!analysisService) {
+        return response.status(503).json({ error: "LLM analysis is not configured" });
+      }
+      const id = Number(request.params.id);
+      if (!Number.isInteger(id)) {
+        return response.status(404).json({ error: `Stock #${request.params.id} not found` });
+      }
+      const flag = (value) => ["1", "true", "yes"].includes(String(value ?? "").toLowerCase());
+      analysisService
+        .analyze(id, { held: flag(request.query.held), refresh: flag(request.query.refresh) })
+        .then((result) => {
+          if (!result) return response.status(404).json({ error: `Stock #${request.params.id} not found` });
+          response.json(result);
+        })
+        .catch((error) => {
+          const status = error.code === "not_configured" ? 503 : error.code === "rate_limited" ? 429 : 502;
+          response.status(status).json({ error: error.message, code: error.code ?? null });
+        });
     } catch (error) {
       next(error);
     }

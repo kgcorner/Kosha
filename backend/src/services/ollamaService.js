@@ -1,19 +1,52 @@
+/**
+ * Short scrape-time thesis (thesis/pros/cons) for the top-ranked stocks, used
+ * by AggregationService when `ai.enabled` is true. The model call goes through
+ * the shared OpenAI-compatible LLM provider (OpenRouter, LM Studio, Ollama); the
+ * legacy Ollama `/api/generate` call is kept only when no provider is passed.
+ */
+const THESIS_SCHEMA = {
+  type: "object",
+  properties: {
+    thesis: { type: "string" },
+    pros: { type: "array", items: { type: "string" } },
+    cons: { type: "array", items: { type: "string" } }
+  },
+  required: ["thesis", "pros", "cons"],
+  additionalProperties: false
+};
+
 export class OllamaService {
-  constructor({ baseUrl, model }) {
-    this.baseUrl = baseUrl.replace(/\/$/, "");
+  constructor({ baseUrl, model, provider = null } = {}) {
+    this.baseUrl = baseUrl ? baseUrl.replace(/\/$/, "") : null;
     this.model = model;
+    this.provider = provider;
   }
 
   async analyze(stock) {
     const prompt = [
       `Indian Stock: ${stock.name}`,
-      `Institutional Holding Count: Held by ${stock.consensus_score} top Large Cap MFs.`,
+      `Institutional Holding Count: Held by ${stock.consensus_score} of the actively managed mutual funds tracked.`,
       weightLine(stock),
       ...describeMetrics(stock.metrics),
-      "Return only valid JSON with this shape:",
+      "Use only the data above. Return only valid JSON with this shape:",
       '{"thesis":"2 sentence summary on institutional backing","pros":["pro 1","pro 2","pro 3"],"cons":["con 1","con 2","con 3"]}'
     ].join("\n");
 
+    const result = this.provider
+      ? await this.provider.generateJson({
+        system: "You are a concise equity analyst for Indian stocks. Never invent numbers.",
+        prompt,
+        schema: THESIS_SCHEMA,
+        schemaName: "stock_thesis"
+      })
+      : await this.legacyOllama(prompt);
+    if (typeof result.thesis !== "string" || !Array.isArray(result.pros) || !Array.isArray(result.cons)) {
+      throw new Error(`LLM returned an invalid analysis for "${stock.name}"`);
+    }
+    return result;
+  }
+
+  async legacyOllama(prompt) {
     const response = await fetch(`${this.baseUrl}/api/generate`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -22,13 +55,8 @@ export class OllamaService {
     if (!response.ok) {
       throw new Error(`Ollama request failed (${response.status}): ${await response.text()}`);
     }
-
     const payload = await response.json();
-    const result = JSON.parse(payload.response);
-    if (typeof result.thesis !== "string" || !Array.isArray(result.pros) || !Array.isArray(result.cons)) {
-      throw new Error(`Ollama returned an invalid analysis for "${stock.name}"`);
-    }
-    return result;
+    return JSON.parse(payload.response);
   }
 }
 

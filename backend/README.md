@@ -19,10 +19,24 @@ The SQLite database is created at `data/stocks.sqlite` by default.
 ## Configuration
 
 - `config/scraping.json` configures the fund categories, the source adapter (`source`, now `fund-disclosures` by default), XPath selectors (Groww/Moneycontrol only), browser timeouts, and an optional fund limit. Each category may carry its own `xpath`, falling back to `selectors.mf_list_page.fund_row`.
-- `config/app.json` configures the API port, SQLite path, cron expression, and optional Ollama analysis.
+- `config/app.json` configures the API port, SQLite path, cron expression, and the LLM provider (`llm`, OpenAI-compatible), Tapetide fundamentals (`fundamentals`) and the optional scrape-time thesis (`ai`).
 - Set `APP_CONFIG`, `SCRAPING_CONFIG`, `PORT`, or `DATABASE_PATH` to override defaults. Config paths are relative to `backend/`.
 - Groww's holdings table (`Name | Sector | Instruments | Assets`) is read row-by-row, so portfolio **weights are captured** (`weight_percentage` from the Assets column) and each row's **stock detail URL** (`stock_url`, the company cell's `//a/@href`) is stored. The leaderboard ranks by consensus (distinct funds) then summed weight internally, but **displays the per-fund average weight with its min–max range** (`weight_avg` / `weight_min` / `weight_max`) — summing one stock's weight across dozens of funds is not a meaningful figure.
 - Each stock's own detail page is then visited once and every metric under `selectors.stock_page.metrics` (price, valuation ratios, financial trends, shareholding, corporate actions, filings, peers) is persisted to `stock_metrics`; `selectors.stock_page.hints` provides XPath/label/`__NEXT_DATA__`-payload fallbacks for Groww's moving markup, and `scrape.stock_limit` optionally caps how many stock pages a run visits.
+
+### AI analysis (on demand, OpenAI-compatible)
+
+`GET /api/stocks/:id/analysis` sends Kosha's fund signal plus the stock's fundamentals to an LLM and returns a verdict: **BUY / IGNORE** by default, or **HOLD / SELL** with `?held=true`. The response includes confidence, a summary, fund consensus, valuation, strengths, risks, red flags, what would change the view, and data gaps. Results are cached per stock (and per held flag) until the inputs change (new fundamentals or a new scrape); `?refresh=true` forces a new run.
+
+Any OpenAI-compatible endpoint works; configure `llm` in `config/app.json`:
+
+| Setup | `base_url` | `api_key_env` | `model` example |
+|---|---|---|---|
+| OpenRouter (default) | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` | `google/gemini-2.5-flash` |
+| LM Studio (local) | `http://127.0.0.1:1234/v1` | — | the loaded model's id |
+| Ollama (local) | `http://127.0.0.1:11434/v1` | — | `gemma3:27b` |
+
+Keys are read from the environment only. Strict JSON-schema output is used when the model supports it, with automatic fallback to JSON mode for models that don't. The optional scrape-time thesis (`ai.enabled`) uses the same provider.
 
 ### Fundamentals (Tapetide, on demand)
 
@@ -48,6 +62,7 @@ To add a source, implement `SourceAdapter` in `src/scrapers/sourceAdapter.js`, i
 - `GET /api/stocks/leaderboard?limit=20&offset=0&category=Small%20Cap` — consensus ranking with AI thesis/pros/cons, the stock's `stock_url` and its scraped `metrics`; `category` scopes the ranking to that category's funds (and each row carries a `categories` list).
 - `GET /api/stocks/:id/metrics` — the full metric set scraped from one stock's detail page (price, ratios, financials, shareholding, peers) plus per-metric `provenance`; `404` if the stock is unknown.
 - `GET /api/stocks/:id/fundamentals?refresh=false&sections=profile,financials,shareholding,pledge` — **lazy** fundamentals from Tapetide (quote + valuation ratios, financial statements, quarterly shareholding, promoter pledge) plus Kosha's `fund_signal` (funds holding it, overall and per category). Never called by the scrape job; each section is cached in `stock_fundamentals` (profile 24h, the rest 30 days — `fundamentals.ttl_hours` in `config/app.json`). When the provider fails or the quota is used up, the last cached copy is returned with `stale: true` and an `errors` entry.
+- `GET /api/stocks/:id/analysis?held=false&refresh=false` — **lazy** LLM verdict (BUY/IGNORE, or HOLD/SELL when `held=true`) from fund signal + fundamentals; cached until inputs change. 503 when no LLM is configured, 429 when rate-limited, 502 on model errors.
 - `GET /api/funds` — tracked funds and their last scrape timestamp.
 - `GET /api/categories` — distinct fund categories (leaderboard filter options).
 - `GET /api/scrape/dry-run?category=Small%20Cap&fund=0&limit=5` — read-only selector heat-and-trial: one category → one fund → up to 5 holdings with every parsed data point (name, sector, instrument, weight, stock URL) **and each holding's scraped stock-page metrics** plus diagnostics.

@@ -12,6 +12,8 @@ import { OllamaService } from "./services/ollamaService.js";
 import { ScrapeJob } from "./services/scrapeJob.js";
 import { TapetideClient } from "./services/tapetideClient.js";
 import { DEFAULT_SECTIONS, FundamentalsService } from "./services/fundamentalsService.js";
+import { createLlmProvider } from "./services/llmProviders.js";
+import { StockAnalysisService } from "./services/stockAnalysisService.js";
 
 const { app: appConfig, scraping } = loadConfig();
 console.log("Loaded configuration:", { app: appConfig, scraping });
@@ -21,8 +23,12 @@ const repositories = createRepositories(db);
 const reaped = repositories.jobs.reapStale();
 if (reaped > 0) console.log(`Marked ${reaped} stale scrape job(s) as failed on startup`);
 const sourceRegistry = createSourceRegistry(scraping);
-console.log("Initilizing Ollama Service with configuration:", appConfig.ai);
-const ollamaService = new OllamaService(appConfig.ai);
+// One OpenAI-compatible LLM provider (OpenRouter by default, or a local LM
+// Studio/Ollama server) shared by the on-demand stock analysis and the
+// optional scrape-time thesis.
+const llm = createLlmProvider(appConfig.llm ?? {});
+console.log("LLM provider:", llm.describe(), llm.configured ? "" : "(not configured — analysis endpoint will report it)");
+const ollamaService = new OllamaService({ ...appConfig.ai, provider: llm });
 const aggregationService = new AggregationService({
   repository: repositories.aggregation,
   ollamaService,
@@ -41,8 +47,9 @@ const scrapeJob = new ScrapeJob({
 });
 const dryRunService = new ScrapeDryRunService({ configuration: scraping, sourceRegistry });
 const fundamentalsService = createFundamentalsService(appConfig.fundamentals, repositories);
+const analysisService = new StockAnalysisService({ repositories, fundamentalsService, llm });
 
-const server = createApp({ repositories, scrapeJob, dryRunService, fundamentalsService }).listen(appConfig.port, () => {
+const server = createApp({ repositories, scrapeJob, dryRunService, fundamentalsService, analysisService }).listen(appConfig.port, () => {
   console.log(`Stock recommender API listening on port ${appConfig.port}`);
 });
 
