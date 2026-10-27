@@ -1,103 +1,24 @@
 {
-  "source": "groww",
-  "homepage_url": "https://groww.in/",
+  "source": "mfdata",
+  "homepage_url": "https://mfdata.in/",
   "categories": [
-    { "category": "Mid Cap", "url": "https://groww.in/mutual-funds/filter?sub_cat=%5B%22Mid+Cap%22%5D", "xpath": "//a[contains(@class, 'tableCells_srLink__PZHGP')]" },
-    { "category": "Large Cap", "url": "https://groww.in/mutual-funds/filter?sub_cat=%5B%22Large+Cap%22%5D", "xpath": "//a[contains(@class, 'tableCells_srLink__PZHGP')]" },
-    { "category": "Small Cap", "url": "https://groww.in/mutual-funds/filter?sub_cat=%5B%22Small+Cap%22%5D", "xpath": "//a[contains(@class, 'tableCells_srLink__PZHGP')]" },
-    { "category": "ELSS", "url": "https://groww.in/mutual-funds/filter?sub_cat=%5B%22ELSS%22%5D", "xpath": "//a[contains(@class, 'tableCells_srLink__PZHGP')]" },
-    { "category": "Thematic", "url": "https://groww.in/mutual-funds/filter?sub_cat=%5B%22Thematic%22%5D", "xpath": "//a[contains(@class, 'tableCells_srLink__PZHGP')]" },
-    { "category": "Value Oriented", "url": "https://groww.in/mutual-funds/filter?sub_cat=%5B%22Value+Oriented%22%5D", "xpath": "//a[contains(@class, 'tableCells_srLink__PZHGP')]" },
-    { "category": "Flexi Cap", "url": "https://groww.in/mutual-funds/filter?sub_cat=%5B%22Flexi+Cap%22%5D", "xpath": "//a[contains(@class, 'tableCells_srLink__PZHGP')]" }
+    { "category": "Large Cap", "url": "https://mfdata.in/api/v1/schemes?category=Large%20Cap&plan_type=direct&exclude_fmp=true" },
+    { "category": "Mid Cap", "url": "https://mfdata.in/api/v1/schemes?category=Mid%20Cap&plan_type=direct&exclude_fmp=true" },
+    { "category": "Small Cap", "url": "https://mfdata.in/api/v1/schemes?category=Small%20Cap&plan_type=direct&exclude_fmp=true" },
+    { "category": "Flexi Cap", "url": "https://mfdata.in/api/v1/schemes?category=Flexi%20Cap&plan_type=direct&exclude_fmp=true" },
+    { "category": "ELSS", "url": "https://mfdata.in/api/v1/schemes?category=ELSS&plan_type=direct&exclude_fmp=true" },
+    { "category": "Value Oriented", "url": "https://mfdata.in/api/v1/schemes?category=Value&plan_type=direct&exclude_fmp=true" },
+    { "category": "Thematic", "url": "https://mfdata.in/api/v1/schemes?category=Thematic&plan_type=direct&exclude_fmp=true" }
   ],
-  "selectors": {
-    "mf_list_page": {
-      "fund_row": "//a[contains(@class, 'tableCells_srLink__PZHGP')]"
-    },
-    "mf_detail_page": {
-      "view_all_holdings_button": "",
-      "holding_row": "//td[contains(@class, 'holdings_companyName')]/ancestor::tr",
-      "stock_name": ".//td[contains(@class, 'holdings_companyName')]",
-      "stock_sector": "./td[2]",
-      "stock_instrument": "./td[3]",
-      "stock_weight": "./td[4]",
-      "stock_url": ".//td[contains(@class, 'holdings_companyName')]//a/@href"
-    },
-    "stock_page": {
-      "wait_ms": 2500,
-      "payload_root": "props.pageProps.stockData",
-      "metrics": {
-        "core_identifiers_and_market_metrics": {
-          "ticker_and_exchange": "//h1[contains(@class, 'head')] | //div[contains(@class, 'stockTitle')]//h1",
-          "live_price": "//div[contains(@class, 'liveprice')]//span | //span[contains(@class, 'usl18Price')]",
-          "intraday_high_low": "//tr[td[contains(text(), 'Day High/Low')]]/td[2] | //div[contains(text(), 'Day High/Low')]/following-sibling::div",
-          "fifty_two_week_high_low": "//tr[td[contains(text(), '52 W High/Low')]]/td[2] | //div[contains(text(), '52W High/Low')]/following-sibling::div",
-          "market_cap": "//tr[td[contains(text(), 'Market Cap')]]/td[2] | //div[contains(text(), 'Market Cap')]/following-sibling::div"
-        },
-        "valuation_and_fundamental_ratios": {
-          "pe_ratio": "//tr[td[contains(text(), 'PE Ratio')]]/td[2]",
-          "industry_pe": "//tr[td[contains(text(), 'Sector PE')]]/td[2] | //tr[td[contains(text(), 'Industry PE')]]/td[2]",
-          "eps_ttm": "//tr[td[contains(text(), 'EPS (TTM)')]]/td[2]",
-          "pb_ratio": "//tr[td[contains(text(), 'PB Ratio')]]/td[2]",
-          "book_value": "//tr[td[contains(text(), 'Book Value')]]/td[2]",
-          "roe": "//tr[td[contains(text(), 'ROE')]]/td[2]",
-          "dividend_yield": "//tr[td[contains(text(), 'Dividend Yield')]]/td[2]"
-        },
-        "financial_performance_trends": {
-          "revenue_history": "//div[contains(@id, 'financials')]//table//tr[position()>1]",
-          "profit_history": "//div[contains(@id, 'financials')]//table//tr[contains(., 'Net Profit')]",
-          "growth_metrics": "//div[contains(@class, 'financial-growth')]//tr"
-        },
-        "shareholding_pattern": {
-          "institutional_vs_public": "//div[contains(@id, 'holding')]//table//tr",
-          "trend_shifts": "//div[contains(@class, 'holding-trend')]//span"
-        },
-        "corporate_actions_and_events": {
-          "earnings_calendar": "//div[contains(@class, 'corporate-actions')]//table//tr",
-          "dividends_and_splits": "//div[contains(@class, 'dividend')]//li"
-        },
-        "recent_news_and_regulatory_filings": {
-          "material_disclosures": "//div[contains(@class, 'news-list')]//a",
-          "regulatory_filings": "//div[contains(@id, 'filings')]//tr"
-        },
-        "peer_comparison_benchmarks": {
-          "competitor_metrics": "//div[contains(@id, 'peer')]//table//tr"
-        }
-      },
-      "hints": {
-        "live_price": {
-          "xpaths": ["//span[contains(@class, 'tickerUi_livePrice')]"]
-        },
-        "market_cap": { "labels": ["Market Cap"], "payload": "fundamentals[Market Cap].value" },
-        "pe_ratio": { "labels": ["P/E Ratio", "PE Ratio", "P/E Ratio(TTM)"], "payload": "fundamentals[P/E Ratio(TTM)].value" },
-        "industry_pe": { "labels": ["Industry P/E", "Sector PE", "Industry PE"], "payload": "fundamentals[Industry P/E].value" },
-        "eps_ttm": { "labels": ["EPS", "EPS(TTM)", "EPS (TTM)"], "payload": "fundamentals[EPS(TTM)].value" },
-        "pb_ratio": { "labels": ["P/B Ratio", "PB Ratio"], "payload": "fundamentals[P/B Ratio].value" },
-        "book_value": { "labels": ["Book Value"], "payload": "fundamentals[Book Value].value" },
-        "roe": { "labels": ["ROE"], "payload": "fundamentals[ROE].value" },
-        "dividend_yield": { "labels": ["Dividend Yield", "Div Yield"], "payload": "fundamentals[Dividend Yield].value" },
-        "fifty_two_week_high_low": {
-          "labels": ["52 week low", "52 week high", "52 W High/Low", "52W High/Low"],
-          "payload": {
-            "low": "priceData.nse.yearLowPrice",
-            "high": "priceData.nse.yearHighPrice"
-          }
-        },
-        "revenue_history": { "payload": "financialStatement[Revenue].yearly" },
-        "profit_history": { "payload": "financialStatement[Profit].yearly" },
-        "growth_metrics": { "payload": "financialStatement[Revenue].cagr" },
-        "institutional_vs_public": { "payload": "shareholdingPatternV2.data" },
-        "trend_shifts": { "payload": "shareholdingPatternV2.data" },
-        "competitor_metrics": { "payload": "similarAssets.peerList" }
-      },
-      "payload": {
-        "details": "details",
-        "financials": "financialStatement",
-        "shareholding": "shareholdingPatternV2.data",
-        "peers": "similarAssets.peerList",
-        "price_range": "priceData"
-      }
-    }
+  "selectors": {},
+  "mfdata": {
+    "exclude_name_pattern": "\\b(index|etf|nifty|sensex|fund of funds?|fof)\\b",
+    "holding_type": "equity",
+    "month": null,
+    "timeout_ms": 30000,
+    "request_delay_ms": 250,
+    "max_retries": 3,
+    "retry_backoff_ms": 2000
   },
   "browser": {
     "headless": true,

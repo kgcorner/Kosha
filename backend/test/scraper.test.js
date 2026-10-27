@@ -256,9 +256,9 @@ test("fund scraper normalises Groww categories and falls back to category_url", 
   assert.throws(() => missing.categoryList(), /must define categories or category_url/);
 });
 
-test("all Groww categories from scraping.json resolve under the groww source", async () => {
+test("all Groww categories from scraping.groww.json resolve under the groww source", async () => {
   const configuration = JSON.parse(
-    await readFile(new URL("../config/scraping.json", import.meta.url), "utf8")
+    await readFile(new URL("../config/scraping.groww.json", import.meta.url), "utf8")
   );
   assert.equal(configuration.source, "groww");
   assert.equal(configuration.categories.length, 7);

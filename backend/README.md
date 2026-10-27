@@ -18,7 +18,7 @@ The SQLite database is created at `data/stocks.sqlite` by default.
 
 ## Configuration
 
-- `config/scraping.json` configures the fund categories (7 Groww categories), the source adapter, XPath selectors, browser timeouts, and an optional fund limit. Each category may carry its own `xpath`, falling back to `selectors.mf_list_page.fund_row`.
+- `config/scraping.json` configures the fund categories, the source adapter (`source`, now `mfdata` by default), XPath selectors (Groww/Moneycontrol only), browser timeouts, and an optional fund limit. Each category may carry its own `xpath`, falling back to `selectors.mf_list_page.fund_row`.
 - `config/app.json` configures the API port, SQLite path, cron expression, and optional Ollama analysis.
 - Set `APP_CONFIG`, `SCRAPING_CONFIG`, `PORT`, or `DATABASE_PATH` to override defaults. Config paths are relative to `backend/`.
 - Groww's holdings table (`Name | Sector | Instruments | Assets`) is read row-by-row, so portfolio **weights are captured** (`weight_percentage` from the Assets column) and each row's **stock detail URL** (`stock_url`, the company cell's `//a/@href`) is stored. The leaderboard ranks by consensus (distinct funds) then summed weight internally, but **displays the per-fund average weight with its min–max range** (`weight_avg` / `weight_min` / `weight_max`) — summing one stock's weight across dozens of funds is not a meaningful figure.
@@ -26,14 +26,14 @@ The SQLite database is created at `data/stocks.sqlite` by default.
 
 ### MFData.in API source (`mfdata`)
 
-`src/scrapers/mfdataAdapter.js` reads from the free [MFData.in](https://mfdata.in/docs) REST API instead of scraping HTML. An example config lives at `config/scraping.mfdata.json`; until source selection is wired to a parameter, run it with `SCRAPING_CONFIG=config/scraping.mfdata.json npm start`.
+`src/scrapers/mfdataAdapter.js` reads from the free [MFData.in](https://mfdata.in/docs) REST API instead of scraping HTML. It is the default: `config/scraping.json` sets `"source": "mfdata"` with `homepage_url` `https://mfdata.in/`, and every category URL points at `mfdata.in`, so `supports(url)` resolves them to this adapter. The previous Groww config is kept at `config/scraping.groww.json` — run `SCRAPING_CONFIG=config/scraping.groww.json npm start` to switch back.
 
 - Each category `url` is a schemes query (`/api/v1/schemes?category=Small%20Cap&plan_type=direct`). Plan variants are collapsed to one fund per scheme family, and index funds/ETFs/FoFs are dropped (`mfdata.exclude_name_pattern`).
 - Holdings come from `/api/v1/families/{id}/holdings?holding_type=equity`; set `mfdata.month` (`YYYY-MM`) to pin a disclosure month, otherwise the latest is used.
 - Holdings carry weight, sector, ISIN, quantity and market value but **no stock URL**, so the per-stock metrics pass is skipped for this source (fundamentals need a separate provider).
 - Requests are throttled (`request_delay_ms`) and retried on 429/5xx, honouring `Retry-After`.
 
-To add a source, implement `SourceAdapter` in `src/scrapers/sourceAdapter.js`, implement `supports(url)` and the scraping methods (`discoverFunds`, `scrapeFundHoldings`), and register its factory in `src/scrapers/sourceRegistry.js` (`groww` and `moneycontrol` are registered; `scraping.json` selects which one via `source`). XPath reads are bounded and tolerant of SPA re-render races, so a missing element never crashes a scrape job.
+To add a source, implement `SourceAdapter` in `src/scrapers/sourceAdapter.js`, implement `supports(url)` and the scraping methods (`discoverFunds`, `scrapeFundHoldings`), and register its factory in `src/scrapers/sourceRegistry.js` (`mfdata`, `groww` and `moneycontrol` are registered; `scraping.json` selects which one via `source`). XPath reads are bounded and tolerant of SPA re-render races, so a missing element never crashes a scrape job.
 
 ## API (summary)
 
