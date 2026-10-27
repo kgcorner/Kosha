@@ -1,4 +1,4 @@
-import { withBrowser } from "./browser.js";
+import { withPageIfNeeded } from "./browser.js";
 import { normalizeCategories } from "./categoryList.js";
 
 export class MutualFundScraper {
@@ -10,9 +10,11 @@ export class MutualFundScraper {
 
   async run() {
     const fundsByUrl = new Map();
+    const categories = this.categoryList();
+    const needsBrowser = categories.some((category) => this.sourceRegistry.resolve(category.url).requiresBrowser !== false);
 
-    await withBrowser(this.configuration, async (page) => {
-      for (const category of this.categoryList()) {
+    await withPageIfNeeded(needsBrowser, this.configuration, async (page) => {
+      for (const category of categories) {
         const adapter = this.sourceRegistry.resolve(category.url);
         console.log(`[scrape:funds] scanning category "${category.name}": ${category.url}`);
         const discovered = await adapter.discoverFunds(page, {

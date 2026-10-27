@@ -1,5 +1,8 @@
 export class SourceAdapter {
   sourceName = "scrape";
+  // HTML scrapers need a Playwright page; API/data-file sources set this to
+  // false so the pipeline skips launching Chromium (they receive page = null).
+  requiresBrowser = true;
 
   supports(_url) {
     throw new Error("SourceAdapter.support(url) must be implemented");

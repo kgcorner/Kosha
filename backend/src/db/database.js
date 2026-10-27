@@ -116,6 +116,10 @@ export function createDatabase(databasePath) {
   db.exec(schema);
   ensureColumn(db, "funds", "category", "TEXT");
   ensureColumn(db, "stocks", "url", "TEXT");
+  ensureColumn(db, "stocks", "isin", "TEXT");
+  // ISIN is the stable stock identity when a source provides it (AMC disclosures
+  // spell one company several ways: "Ltd." / "Limited" / "EQ - ...").
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_stocks_isin ON stocks(isin) WHERE isin IS NOT NULL");
   ensureColumn(db, "stock_aggregations", "weight_avg", "REAL");
   ensureColumn(db, "stock_aggregations", "weight_min", "REAL");
   ensureColumn(db, "stock_aggregations", "weight_max", "REAL");

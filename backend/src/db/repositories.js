@@ -124,6 +124,25 @@ export function createRepositories(db) {
         this.markFundScraped(fundId);
       },
       upsertStock: (stock) => {
+        // Sources that supply an ISIN (fund-disclosures) are matched on it, so
+        // spelling variants of one company collapse to a single stock row.
+        if (stock.isin) {
+          const byIsin = db.prepare("SELECT id FROM stocks WHERE isin = ?").get(stock.isin);
+          if (byIsin) {
+            if (stock.url) db.prepare("UPDATE stocks SET url = COALESCE(url, ?) WHERE id = ?").run(stock.url, byIsin.id);
+            return byIsin.id;
+          }
+          // Adopt a legacy name-only row for the same company, else insert.
+          const byName = db.prepare("SELECT id, isin FROM stocks WHERE name = ?").get(stock.name);
+          if (byName && !byName.isin) {
+            db.prepare("UPDATE stocks SET isin = ?, url = COALESCE(url, ?) WHERE id = ?")
+              .run(stock.isin, stock.url ?? null, byName.id);
+            return byName.id;
+          }
+          const name = byName ? `${stock.name} (${stock.isin})` : stock.name;
+          return Number(db.prepare("INSERT INTO stocks (name, url, isin) VALUES (?, ?, ?)")
+            .run(name, stock.url ?? null, stock.isin).lastInsertRowid);
+        }
         db.prepare(`
           INSERT INTO stocks (name, url) VALUES (@name, @url)
           ON CONFLICT(name) DO UPDATE SET

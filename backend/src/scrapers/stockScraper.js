@@ -1,4 +1,4 @@
-import { withBrowser } from "./browser.js";
+import { withBrowser, withPageIfNeeded } from "./browser.js";
 
 export class StockScraper {
   // `withBrowser` is injectable so the orchestration can be unit-tested without
@@ -16,7 +16,8 @@ export class StockScraper {
     // Metrics count is assigned inside the browser callback, so declare it here.
     let enriched = 0;
 
-    await this.withBrowser(this.configuration, async (page) => {
+    const needsBrowser = adapter.requiresBrowser !== false;
+    await withPageIfNeeded(needsBrowser, this.configuration, async (page) => {
       for (const fund of funds) {
         const holdings = await adapter.scrapeFundHoldings(
           page,
@@ -25,9 +26,10 @@ export class StockScraper {
         );
         this.repositories.holdings.replaceFundHoldings(fund.id, holdings);
         for (const holding of holdings) {
-          const existing = stocks.get(holding.name);
+          const key = holding.isin ?? holding.name;
+          const existing = stocks.get(key);
           if (!existing) {
-            stocks.set(holding.name, { name: holding.name, url: holding.url ?? null });
+            stocks.set(key, { name: holding.name, url: holding.url ?? null, isin: holding.isin ?? null });
           } else if (!existing.url && holding.url) {
             // A later fund page may resolve the detail URL an earlier one missed.
             existing.url = holding.url;
@@ -53,7 +55,8 @@ export class StockScraper {
           const extracted = await adapter.scrapeStockMetrics(page, stock.url, this.configuration);
           const stockId = this.repositories.holdings.upsertStock({
             name: stock.name,
-            url: stock.url
+            url: stock.url,
+            isin: stock.isin
           });
           this.repositories.stockMetrics.upsert(stockId, {
             url: stock.url,
@@ -68,7 +71,7 @@ export class StockScraper {
           console.warn(`[scrape:stocks] metrics for "${stock.name}" failed:`, error.message);
         }
       }
-    });
+    }, this.withBrowser);
 
     console.log(
       `[scrape:stocks] ${stocks.size} unique stock(s), ${enriched} with metrics captured`

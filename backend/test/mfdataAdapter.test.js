@@ -157,9 +157,9 @@ test("getJson retries a 429 using Retry-After and fails loudly on other errors",
   );
 });
 
-test("default scraping.json selects the mfdata source and every category through the registry and every category resolves", async () => {
+test("scraping.mfdata.json selects the mfdata source and every category resolves", async () => {
   const configuration = JSON.parse(
-    await readFile(new URL("../config/scraping.json", import.meta.url), "utf8")
+    await readFile(new URL("../config/scraping.mfdata.json", import.meta.url), "utf8")
   );
   assert.equal(configuration.source, "mfdata");
   const registry = createSourceRegistry(configuration);

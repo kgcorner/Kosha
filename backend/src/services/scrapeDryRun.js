@@ -1,4 +1,4 @@
-import { withBrowser } from "../scrapers/browser.js";
+import { withBrowser, withPageIfNeeded } from "../scrapers/browser.js";
 import { normalizeCategories } from "../scrapers/categoryList.js";
 
 export const DRY_RUN_DEFAULT_LIMIT = 5;
@@ -40,7 +40,7 @@ export class ScrapeDryRunService {
       category_xpath: selected.xpath
     };
 
-    return this.withBrowser(this.configuration, async (page) => {
+    return withPageIfNeeded(adapter.requiresBrowser !== false, this.configuration, async (page) => {
       const funds = await adapter.discoverFunds(page, categoryConfiguration);
       const fundIndex = selectFundIndex(funds, fund);
       if (fundIndex === -1) {
@@ -99,7 +99,7 @@ export class ScrapeDryRunService {
         holdings: listed,
         diagnostics
       };
-    });
+    }, this.withBrowser);
   }
 }
 

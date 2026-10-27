@@ -48,7 +48,7 @@ A scrape drives a headless browser across many pages and takes minutes, so trigg
 The same pipeline runs automatically on the `scrape_cron` cron expression (default `0 6 * * *` — daily at 06:00). Invalid cron expressions fail fast at startup.
 
 ### 1.8 Pluggable Source Adapters
-The scraper is source-agnostic. A source implements `supports(url)` plus `discoverFunds(page)` and `scrapeFundHoldings(page, fund)`, and is registered in `src/scrapers/sourceRegistry.js`. `mfdata`, `groww` and `moneycontrol` are registered; `config/scraping.json` picks one (default `mfdata`; Groww config kept in `config/scraping.groww.json`) via `source`, and the registry resolves the adapter per category URL. XPath reads are **bounded and tolerant**: a short per-read timeout and try/catch so an element that detaches mid-read (a common race on Groww's client-rendered SPA) resolves to `null`/skipped instead of crashing the job.
+The scraper is source-agnostic. A source implements `supports(url)` plus `discoverFunds(page)` and `scrapeFundHoldings(page, fund)`, and is registered in `src/scrapers/sourceRegistry.js`. `fund-disclosures`, `mfdata`, `groww` and `moneycontrol` are registered; `config/scraping.json` picks one (default `fund-disclosures`; Groww and MFData.in configs kept in `config/scraping.groww.json` and `config/scraping.mfdata.json`) via `source`, and the registry resolves the adapter per category URL. XPath reads are **bounded and tolerant**: a short per-read timeout and try/catch so an element that detaches mid-read (a common race on Groww's client-rendered SPA) resolves to `null`/skipped instead of crashing the job.
 
 ---
 

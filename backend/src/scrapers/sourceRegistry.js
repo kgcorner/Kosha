@@ -1,6 +1,7 @@
 import { MoneycontrolAdapter } from "./moneycontrolAdapter.js";
 import { GrowwAdapter } from "./growwAdapter.js";
 import { MfdataAdapter } from "./mfdataAdapter.js";
+import { FundDisclosuresAdapter } from "./fundDisclosuresAdapter.js";
 
 export class SourceRegistry {
   constructor(adapters, defaultUrl) {
@@ -20,7 +21,8 @@ export function createSourceRegistry(configuration) {
   const adapters = {
     moneycontrol: () => new MoneycontrolAdapter(homepage),
     groww: () => new GrowwAdapter(homepage),
-    mfdata: () => new MfdataAdapter(homepage)
+    mfdata: () => new MfdataAdapter(homepage),
+    "fund-disclosures": () => new FundDisclosuresAdapter(homepage)
   };
   const factory = adapters[configuration.source];
   if (!factory) throw new Error(`Unknown scraper source "${configuration.source}"`);

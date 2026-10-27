@@ -23,6 +23,7 @@ export class MfdataAdapter extends SourceAdapter {
   constructor(homepage, { fetch: fetchImpl = globalThis.fetch, sleep = defaultSleep } = {}) {
     super();
     this.sourceName = "mfdata";
+    this.requiresBrowser = false;
     this.homepage = new URL(homepage);
     this.fetch = fetchImpl;
     this.sleep = sleep;
