@@ -174,7 +174,31 @@ export function createRepositories(db) {
           : db.prepare(base).all();
       },
       getById(stockId) {
-        return db.prepare("SELECT id, name, url FROM stocks WHERE id = ?").get(stockId) ?? null;
+        return db.prepare("SELECT id, name, url, isin, symbol FROM stocks WHERE id = ?").get(stockId) ?? null;
+      },
+      setSymbol(stockId, symbol) {
+        db.prepare("UPDATE stocks SET symbol = ? WHERE id = ?").run(symbol, stockId);
+      }
+    },
+    fundamentals: {
+      list(stockId) {
+        return db.prepare(
+          "SELECT section, provider, symbol, payload, fetched_at FROM stock_fundamentals WHERE stock_id = ?"
+        ).all(stockId).map(parseFundamentalsRow);
+      },
+      upsert(stockId, section, { provider, symbol, payload }) {
+        db.prepare(`
+          INSERT INTO stock_fundamentals (stock_id, section, provider, symbol, payload, fetched_at)
+          VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(stock_id, section) DO UPDATE SET
+            provider = excluded.provider,
+            symbol = excluded.symbol,
+            payload = excluded.payload,
+            fetched_at = excluded.fetched_at
+        `).run(stockId, section, provider, symbol ?? null, JSON.stringify(payload ?? null));
+        return parseFundamentalsRow(db.prepare(
+          "SELECT section, provider, symbol, payload, fetched_at FROM stock_fundamentals WHERE stock_id = ? AND section = ?"
+        ).get(stockId, section));
       }
     },
     stockMetrics: {
@@ -206,6 +230,27 @@ export function createRepositories(db) {
       }
     },
     aggregation: {
+      // Kosha's own signal for one stock — how many tracked funds hold it,
+      // overall and per category — so the LLM can weigh fund-manager consensus
+      // alongside fundamentals.
+      signalFor(stockId) {
+        const overall = db.prepare(`
+          SELECT consensus_score AS funds_holding, rank, weight_avg, weight_min, weight_max
+          FROM stock_aggregations WHERE stock_id = ?
+        `).get(stockId) ?? null;
+        const categories = db.prepare(`
+          SELECT f.category,
+                 COUNT(DISTINCT h.fund_id) AS funds_holding,
+                 (SELECT COUNT(*) FROM funds all_f WHERE all_f.category = f.category) AS funds_in_category,
+                 AVG(CASE WHEN h.weight_percentage > 0 THEN h.weight_percentage END) AS weight_avg
+          FROM fund_holdings h
+          JOIN funds f ON f.id = h.fund_id
+          WHERE h.stock_id = ? AND f.category IS NOT NULL
+          GROUP BY f.category
+          ORDER BY funds_holding DESC
+        `).all(stockId);
+        return { ...(overall ?? { funds_holding: 0, rank: null }), categories };
+      },
       recompute() {
         db.prepare(`
           INSERT INTO stock_aggregations
@@ -451,4 +496,15 @@ export function deserializeMetrics(row) {
     raw: row.raw ? JSON.parse(row.raw) : null,
     updated_at: row.updated_at
   };
+}
+
+function parseFundamentalsRow(row) {
+  if (!row) return null;
+  let payload = null;
+  try {
+    payload = JSON.parse(row.payload);
+  } catch {
+    payload = row.payload;
+  }
+  return { ...row, payload };
 }

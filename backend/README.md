@@ -24,6 +24,10 @@ The SQLite database is created at `data/stocks.sqlite` by default.
 - Groww's holdings table (`Name | Sector | Instruments | Assets`) is read row-by-row, so portfolio **weights are captured** (`weight_percentage` from the Assets column) and each row's **stock detail URL** (`stock_url`, the company cell's `//a/@href`) is stored. The leaderboard ranks by consensus (distinct funds) then summed weight internally, but **displays the per-fund average weight with its min–max range** (`weight_avg` / `weight_min` / `weight_max`) — summing one stock's weight across dozens of funds is not a meaningful figure.
 - Each stock's own detail page is then visited once and every metric under `selectors.stock_page.metrics` (price, valuation ratios, financial trends, shareholding, corporate actions, filings, peers) is persisted to `stock_metrics`; `selectors.stock_page.hints` provides XPath/label/`__NEXT_DATA__`-payload fallbacks for Groww's moving markup, and `scrape.stock_limit` optionally caps how many stock pages a run visits.
 
+### Fundamentals (Tapetide, on demand)
+
+Set `TAPETIDE_TOKEN` (personal token from https://tapetide.com/settings/tokens) before `npm start`. The token is read from the environment only; never put it in a config file. Without it the endpoint serves cached data only. Stocks are matched to Tapetide symbols by ISIN (cached in `stocks.symbol`). A first view of a stock costs ~5 calls (symbol search + 4 sections); repeat views within the TTL cost nothing. The free plan allows 50 calls/day.
+
 ### Default source: AMC disclosures (`fund-disclosures`)
 
 `config/scraping.json` uses `src/scrapers/fundDisclosuresAdapter.js`, which reads the **official AMC monthly portfolio disclosures** as parsed and published by the open [fund-disclosures](https://github.com/subscriptionmanager26-png/fund-disclosures) project (data repo `kushagra-agarwal-a/fund-holdings-data`). No API key, no browser.
@@ -43,6 +47,7 @@ To add a source, implement `SourceAdapter` in `src/scrapers/sourceAdapter.js`, i
 
 - `GET /api/stocks/leaderboard?limit=20&offset=0&category=Small%20Cap` — consensus ranking with AI thesis/pros/cons, the stock's `stock_url` and its scraped `metrics`; `category` scopes the ranking to that category's funds (and each row carries a `categories` list).
 - `GET /api/stocks/:id/metrics` — the full metric set scraped from one stock's detail page (price, ratios, financials, shareholding, peers) plus per-metric `provenance`; `404` if the stock is unknown.
+- `GET /api/stocks/:id/fundamentals?refresh=false&sections=profile,financials,shareholding,pledge` — **lazy** fundamentals from Tapetide (quote + valuation ratios, financial statements, quarterly shareholding, promoter pledge) plus Kosha's `fund_signal` (funds holding it, overall and per category). Never called by the scrape job; each section is cached in `stock_fundamentals` (profile 24h, the rest 30 days — `fundamentals.ttl_hours` in `config/app.json`). When the provider fails or the quota is used up, the last cached copy is returned with `stale: true` and an `errors` entry.
 - `GET /api/funds` — tracked funds and their last scrape timestamp.
 - `GET /api/categories` — distinct fund categories (leaderboard filter options).
 - `GET /api/scrape/dry-run?category=Small%20Cap&fund=0&limit=5` — read-only selector heat-and-trial: one category → one fund → up to 5 holdings with every parsed data point (name, sector, instrument, weight, stock URL) **and each holding's scraped stock-page metrics** plus diagnostics.

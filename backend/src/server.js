@@ -10,6 +10,8 @@ import { ScrapeDryRunService } from "./services/scrapeDryRun.js";
 import { AggregationService } from "./services/aggregationService.js";
 import { OllamaService } from "./services/ollamaService.js";
 import { ScrapeJob } from "./services/scrapeJob.js";
+import { TapetideClient } from "./services/tapetideClient.js";
+import { DEFAULT_SECTIONS, FundamentalsService } from "./services/fundamentalsService.js";
 
 const { app: appConfig, scraping } = loadConfig();
 console.log("Loaded configuration:", { app: appConfig, scraping });
@@ -38,8 +40,9 @@ const scrapeJob = new ScrapeJob({
   categoryChanges: repositories.categoryChanges
 });
 const dryRunService = new ScrapeDryRunService({ configuration: scraping, sourceRegistry });
+const fundamentalsService = createFundamentalsService(appConfig.fundamentals, repositories);
 
-const server = createApp({ repositories, scrapeJob, dryRunService }).listen(appConfig.port, () => {
+const server = createApp({ repositories, scrapeJob, dryRunService, fundamentalsService }).listen(appConfig.port, () => {
   console.log(`Stock recommender API listening on port ${appConfig.port}`);
 });
 
@@ -65,3 +68,26 @@ function shutdown() {
 
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
+
+// Fundamentals are lazy: built here but only called by
+// GET /api/stocks/:id/fundamentals. The token is read from the environment
+// (never from a committed config file).
+function createFundamentalsService(configuration = {}, repos) {
+  if (configuration.enabled === false) return null;
+  const token = process.env[configuration.token_env ?? "TAPETIDE_TOKEN"];
+  if (!token) {
+    console.warn("Fundamentals: TAPETIDE_TOKEN not set — /api/stocks/:id/fundamentals will serve cached data only");
+  }
+  const client = new TapetideClient({
+    token,
+    baseUrl: configuration.base_url ?? "https://mcp.tapetide.com",
+    timeoutMs: configuration.timeout_ms ?? 30000
+  });
+  const ttl = configuration.ttl_hours ?? {};
+  const sections = Object.fromEntries(
+    Object.entries(DEFAULT_SECTIONS)
+      .filter(([name]) => !configuration.sections || configuration.sections.includes(name))
+      .map(([name, definition]) => [name, { ...definition, ttl_hours: ttl[name] ?? definition.ttl_hours }])
+  );
+  return new FundamentalsService({ repositories: repos, client, sections });
+}

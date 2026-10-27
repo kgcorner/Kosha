@@ -7,5 +7,24 @@
     "baseUrl": "http://127.0.0.1:1234",
     "model": "ornith-1.5-9b",
     "top_stock_limit": 20
+  },
+  "fundamentals": {
+    "enabled": true,
+    "provider": "tapetide",
+    "token_env": "TAPETIDE_TOKEN",
+    "base_url": "https://mcp.tapetide.com",
+    "timeout_ms": 30000,
+    "sections": [
+      "profile",
+      "financials",
+      "shareholding",
+      "pledge"
+    ],
+    "ttl_hours": {
+      "profile": 24,
+      "financials": 720,
+      "shareholding": 720,
+      "pledge": 720
+    }
   }
 }

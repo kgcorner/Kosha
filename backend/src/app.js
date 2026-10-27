@@ -9,7 +9,8 @@ export function createApp(dependencies) {
     const message = error.message ?? "";
     const status = message.startsWith("A scrape job is already running")
       ? 409
-      : message.startsWith("Pagination") || message.startsWith("Unknown dry-run category")
+      : message.startsWith("Pagination") || message.startsWith("Unknown dry-run category") ||
+          message.startsWith("Unknown fundamentals section")
         ? 400
         : 500;
     response.status(status).json({ error: message });
