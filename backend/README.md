@@ -24,6 +24,15 @@ The SQLite database is created at `data/stocks.sqlite` by default.
 - Groww's holdings table (`Name | Sector | Instruments | Assets`) is read row-by-row, so portfolio **weights are captured** (`weight_percentage` from the Assets column) and each row's **stock detail URL** (`stock_url`, the company cell's `//a/@href`) is stored. The leaderboard ranks by consensus (distinct funds) then summed weight internally, but **displays the per-fund average weight with its min–max range** (`weight_avg` / `weight_min` / `weight_max`) — summing one stock's weight across dozens of funds is not a meaningful figure.
 - Each stock's own detail page is then visited once and every metric under `selectors.stock_page.metrics` (price, valuation ratios, financial trends, shareholding, corporate actions, filings, peers) is persisted to `stock_metrics`; `selectors.stock_page.hints` provides XPath/label/`__NEXT_DATA__`-payload fallbacks for Groww's moving markup, and `scrape.stock_limit` optionally caps how many stock pages a run visits.
 
+### MFData.in API source (`mfdata`)
+
+`src/scrapers/mfdataAdapter.js` reads from the free [MFData.in](https://mfdata.in/docs) REST API instead of scraping HTML. An example config lives at `config/scraping.mfdata.json`; until source selection is wired to a parameter, run it with `SCRAPING_CONFIG=config/scraping.mfdata.json npm start`.
+
+- Each category `url` is a schemes query (`/api/v1/schemes?category=Small%20Cap&plan_type=direct`). Plan variants are collapsed to one fund per scheme family, and index funds/ETFs/FoFs are dropped (`mfdata.exclude_name_pattern`).
+- Holdings come from `/api/v1/families/{id}/holdings?holding_type=equity`; set `mfdata.month` (`YYYY-MM`) to pin a disclosure month, otherwise the latest is used.
+- Holdings carry weight, sector, ISIN, quantity and market value but **no stock URL**, so the per-stock metrics pass is skipped for this source (fundamentals need a separate provider).
+- Requests are throttled (`request_delay_ms`) and retried on 429/5xx, honouring `Retry-After`.
+
 To add a source, implement `SourceAdapter` in `src/scrapers/sourceAdapter.js`, implement `supports(url)` and the scraping methods (`discoverFunds`, `scrapeFundHoldings`), and register its factory in `src/scrapers/sourceRegistry.js` (`groww` and `moneycontrol` are registered; `scraping.json` selects which one via `source`). XPath reads are bounded and tolerant of SPA re-render races, so a missing element never crashes a scrape job.
 
 ## API (summary)
