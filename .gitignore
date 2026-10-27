@@ -1,0 +1,87 @@
+# ---------------------------------------------------------------------------
+# Root .gitignore for the stock-recommender-india monorepo
+# Covers both the Node.js backend (backend/) and the Angular client (kosha/).
+# Rules are anchored or globbed where needed so tracked source is never ignored.
+# ---------------------------------------------------------------------------
+
+# --- Node / dependencies ---------------------------------------------------
+node_modules/
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.yarn/
+
+# --- Build output ----------------------------------------------------------
+# Angular (kosha/) build artifacts
+dist/
+**/dist/
+tmp/
+out-tsc/
+bazel-out/
+# Node backend coverage/temp
+coverage/
+**/coverage/
+*.tsbuildinfo
+
+# --- Angular / cache -------------------------------------------------------
+.angular/
+**/.angular/
+.cache/
+.sass-cache/
+.libpeerconnection.log
+connect.lock
+testem.log
+__screenshots__/
+
+# --- Backend runtime data --------------------------------------------------
+# SQLite databases and journals created at runtime (see config/app.json)
+*.sqlite
+*.sqlite3
+*.db
+*.sqlite-journal
+*.sqlite3-journal
+*.db-journal
+*.sqlite-wal
+*.sqlite3-wal
+*.db-wal
+*.sqlite-shm
+*.sqlite3-shm
+*.db-shm
+
+# --- Logs ------------------------------------------------------------------
+logs/
+*.log
+
+# --- Environment / secrets -------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# --- Editors and IDEs ------------------------------------------------------
+.idea/
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+.history/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/mcp.json
+
+# --- OS / system files -----------------------------------------------------
+.DS_Store
+Thumbs.db
+Thumbs.db:encryptable
+Desktop.ini
+ehthumbs.db
+
+# --- Test / tooling --------------------------------------------------------
+/typings

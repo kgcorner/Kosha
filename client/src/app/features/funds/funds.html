@@ -1,0 +1,125 @@
+<h1 class="page-heading">Tracked funds</h1>
+<p class="page-subtitle">
+  Mutual funds discovered from the source categories. Timestamps are shown in local time.
+</p>
+
+<div class="toolbar">
+  <label class="field">
+    <span class="field__label">Category</span>
+    <select
+      class="field__input"
+      [value]="categoryFilter()"
+      (change)="onFilter($any($event.target).value)"
+    >
+      <option value="all">All categories</option>
+      @for (category of categories(); track category) {
+        <option [value]="category">{{ category }}</option>
+      }
+    </select>
+  </label>
+
+  @if (neverScrapedCount() > 0) {
+    <p class="toolbar__note">{{ neverScrapedCount() }} fund(s) have never been scraped.</p>
+  }
+
+  <button type="button" class="btn btn--ghost toolbar__refresh" (click)="load()">Refresh</button>
+</div>
+
+@switch (state()) {
+  @case ('loading') {
+    <div class="table-wrap" aria-busy="true">
+      <table class="data-table">
+        <caption class="visually-hidden">
+          Loading tracked funds
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Category</th>
+            <th scope="col">Last scraped</th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (placeholder of [1, 2, 3, 4, 5]; track placeholder) {
+            <tr>
+              @for (cell of [1, 2, 3, 4]; track cell) {
+                <td><span class="skeleton"></span></td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  @case ('error') {
+    <section class="card state state--error" role="alert">
+      <p class="state__title">Couldn’t load funds</p>
+      <p class="state__message">{{ error() }}</p>
+      <button type="button" class="btn btn--primary" (click)="retry()">Retry</button>
+    </section>
+  }
+
+  @case ('empty') {
+    <section class="card state">
+      <p class="state__title">No funds tracked yet</p>
+      <p class="state__message">
+        Funds appear here after the first scrape discovers them from the source.
+      </p>
+      <a class="btn btn--primary" routerLink="/jobs">Run a scrape</a>
+    </section>
+  }
+
+  @default {
+    <div class="table-wrap">
+      <table class="data-table">
+        <caption class="visually-hidden">
+          Tracked mutual funds
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">
+              <button type="button" class="sort" (click)="setSort('name')">
+                Name
+                @if (sortKey() === 'name') {
+                  <span aria-hidden="true">{{ sortDir() === 'asc' ? '▲' : '▼' }}</span>
+                }
+              </button>
+            </th>
+            <th scope="col">Category</th>
+            <th scope="col">
+              <button type="button" class="sort" (click)="setSort('last_scraped')">
+                Last scraped
+                @if (sortKey() === 'last_scraped') {
+                  <span aria-hidden="true">{{ sortDir() === 'asc' ? '▲' : '▼' }}</span>
+                }
+              </button>
+            </th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (fund of visibleFunds(); track fund.id) {
+            <tr>
+              <td>
+                <a [href]="fund.url" target="_blank" rel="noopener noreferrer">{{ fund.name }}</a>
+              </td>
+              <td>{{ fund.category ?? '—' }}</td>
+              <td class="text-muted">{{ timestamp(fund.last_scraped_at) }}</td>
+              <td>
+                @if (needsRefresh(fund)) {
+                  <span class="badge badge--sell">
+                    <span aria-hidden="true">!</span> {{ refreshLabel(fund) }}
+                  </span>
+                } @else {
+                  <span class="badge badge--buy">Up to date</span>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+}

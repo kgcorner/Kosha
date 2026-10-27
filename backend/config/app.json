@@ -1,0 +1,11 @@
+{
+  "port": 5100,
+  "database_path": "./data/stocks.sqlite",
+  "scrape_cron": "0 6 * * *",
+  "ai": {
+    "enabled": false,
+    "baseUrl": "http://127.0.0.1:1234",
+    "model": "ornith-1.5-9b",
+    "top_stock_limit": 20
+  }
+}

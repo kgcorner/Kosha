@@ -1,0 +1,142 @@
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+
+  &__refresh {
+    margin-inline-start: auto;
+  }
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+
+  &__text {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.signal-card {
+  padding: 1rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+
+  &__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+  }
+
+  &__title {
+    margin: 0;
+    font-size: 1.05rem;
+    margin-inline-end: auto;
+  }
+
+  &__meta {
+    flex-basis: 100%;
+    margin: 0;
+    font-size: 0.82rem;
+  }
+
+  &__follow {
+    padding: 0.3rem 0.7rem;
+    font-size: 0.8rem;
+  }
+
+  &__none {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+
+  &__inline-error {
+    margin: 0;
+    color: var(--danger);
+    font-size: 0.9rem;
+  }
+}
+
+.signal-group {
+  border-radius: var(--radius);
+  padding: 0.75rem 0.85rem;
+
+  &--sell {
+    background: var(--danger-soft);
+    border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent);
+  }
+
+  &--buy {
+    background: var(--success-soft);
+    border: 1px solid color-mix(in srgb, var(--success) 25%, transparent);
+  }
+
+  &__title {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0 0 0.5rem;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  &__list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+}
+
+.signal {
+  display: flex;
+  flex-direction: column;
+
+  &__name {
+    font-weight: 600;
+    color: var(--text-strong);
+  }
+
+  &__note {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+  }
+
+  &--sell .signal__name {
+    color: var(--danger);
+  }
+}
+
+.skeleton--title {
+  height: 1.1rem;
+  width: 40%;
+  margin-bottom: 0.5rem;
+}

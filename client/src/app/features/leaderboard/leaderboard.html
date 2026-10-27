@@ -1,0 +1,252 @@
+<h1 class="page-heading">Consensus leaderboard</h1>
+<p class="page-subtitle">
+  Stocks held by the most mutual funds. Consensus counts distinct funds; weight is the average
+  allocation per holding fund (with its min–max range). Filter by category to rank within “Large
+  Cap”, “Small Cap” and the rest.
+</p>
+
+<div class="toolbar">
+  <label class="field">
+    <span class="field__label">Search</span>
+    <input
+      type="search"
+      class="field__input"
+      placeholder="Filter by stock name"
+      [value]="search()"
+      (input)="onSearch($any($event.target).value)"
+    />
+  </label>
+
+  <label class="field">
+    <span class="field__label">Category</span>
+    <select
+      class="field__input"
+      [value]="category() ?? ''"
+      (change)="changeCategory($any($event.target).value)"
+    >
+      <option value="">All categories</option>
+      @for (name of categories(); track name) {
+        <option [value]="name">{{ name }}</option>
+      }
+    </select>
+  </label>
+
+  <label class="field">
+    <span class="field__label">Page size</span>
+    <select
+      class="field__input"
+      [value]="pageSize()"
+      (change)="changePageSize($any($event.target).value)"
+    >
+      @for (size of pageSizes; track size) {
+        <option [value]="size">{{ size }}</option>
+      }
+    </select>
+  </label>
+
+  <button type="button" class="btn btn--ghost toolbar__refresh" (click)="load()">Refresh</button>
+</div>
+
+@switch (state()) {
+  @case ('loading') {
+    <div class="table-wrap" aria-busy="true">
+      <table class="data-table">
+        <caption class="visually-hidden">
+          Loading consensus leaderboard
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Rank</th>
+            <th scope="col">Stock</th>
+            <th scope="col">Consensus</th>
+            <th scope="col">Weight</th>
+            <th scope="col">Last analyzed</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (placeholder of [1, 2, 3, 4, 5]; track placeholder) {
+            <tr>
+              @for (cell of [1, 2, 3, 4, 5]; track cell) {
+                <td><span class="skeleton"></span></td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  @case ('error') {
+    <section class="card state state--error" role="alert">
+      <p class="state__title">Couldn’t load the leaderboard</p>
+      <p class="state__message">{{ error() }}</p>
+      <button type="button" class="btn btn--primary" (click)="retry()">Retry</button>
+    </section>
+  }
+
+  @case ('empty') {
+    <section class="card state">
+      <p class="state__title">No consensus data yet</p>
+      <p class="state__message">Run a scrape to discover funds and build the consensus ranking.</p>
+      <a class="btn btn--primary" routerLink="/jobs">Go to scrape jobs</a>
+    </section>
+  }
+
+  @default {
+    @if (visibleRows().length === 0) {
+      <section class="card state">
+        <p class="state__title">No matches</p>
+        <p class="state__message">No stocks on this page match “{{ search() }}”.</p>
+      </section>
+    } @else {
+      <div class="table-wrap">
+        <table class="data-table">
+          <caption class="visually-hidden">
+            Consensus leaderboard, page
+            {{
+              page()
+            }}
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">
+                <button type="button" class="sort" (click)="setSort('rank')">
+                  Rank
+                  @if (sortKey() === 'rank') {
+                    <span aria-hidden="true">{{ sortDir() === 'asc' ? '▲' : '▼' }}</span>
+                  }
+                </button>
+              </th>
+              <th scope="col">Stock</th>
+              <th scope="col">Price</th>
+              <th scope="col">
+                <button type="button" class="sort" (click)="setSort('consensus')">
+                  Consensus
+                  @if (sortKey() === 'consensus') {
+                    <span aria-hidden="true">{{ sortDir() === 'asc' ? '▲' : '▼' }}</span>
+                  }
+                </button>
+              </th>
+              <th scope="col">Weight (avg · range)</th>
+              <th scope="col">Last analyzed</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of visibleRows(); track row.stock_id) {
+              <tr [class.row--expanded]="isExpanded(row)">
+                <td class="num">{{ row.rank }}</td>
+                <td>
+                  <button
+                    type="button"
+                    class="stock-toggle"
+                    [attr.aria-expanded]="isExpanded(row)"
+                    (click)="toggleExpanded(row)"
+                  >
+                    <span class="stock-toggle__caret" aria-hidden="true">
+                      {{ isExpanded(row) ? '▾' : '▸' }}
+                    </span>
+                    <span class="stock-toggle__name">{{ row.name }}</span>
+                  </button>
+                  @if (row.categories.length > 0) {
+                    <span class="badge badge--muted">{{ row.categories.join(' · ') }}</span>
+                  }
+                  @if (row.stock_url) {
+                    <a
+                      class="stock-link"
+                      [href]="row.stock_url"
+                      target="_blank"
+                      rel="noopener"
+                      title="Open the stock's Groww detail page"
+                      >source</a
+                    >
+                  }
+                  @if (isSellSignal(row)) {
+                    <span class="badge badge--sell">
+                      <span aria-hidden="true">▼</span> Sell signal
+                    </span>
+                  }
+                </td>
+                <td class="num">{{ priceLabel(row) }}</td>
+                <td class="num">{{ row.consensus_score }}</td>
+                <td class="num text-muted">{{ weightLabel(row) }}</td>
+                <td class="text-muted">{{ timestamp(row.last_analyzed_at) }}</td>
+              </tr>
+
+              @if (isExpanded(row)) {
+                <tr class="detail-row">
+                  <td colspan="6">
+                    @if (hasMetrics(row)) {
+                      <div class="detail detail--metrics">
+                        <h3 class="detail__heading">Scraped stock metrics</h3>
+                        @for (group of metricGroups(row); track group.group) {
+                          <div class="metrics-group">
+                            <h4 class="metrics-group__heading">{{ humanize(group.group) }}</h4>
+                            <dl class="metrics">
+                              @for (entry of group.entries; track entry.key) {
+                                <div class="metrics__row">
+                                  <dt>{{ humanize(entry.key) }}</dt>
+                                  <dd>{{ entry.value }}</dd>
+                                </div>
+                              }
+                            </dl>
+                          </div>
+                        }
+                      </div>
+                    }
+                    @if (hasEnrichment(row)) {
+                      <div class="detail">
+                        @if (row.thesis) {
+                          <p class="detail__thesis">{{ row.thesis }}</p>
+                        }
+                        <div class="detail__columns">
+                          <div>
+                            <h3 class="detail__heading">Pros</h3>
+                            @if (row.pros.length > 0) {
+                              <ul class="detail__list detail__list--pros">
+                                @for (pro of row.pros; track $index) {
+                                  <li>{{ pro }}</li>
+                                }
+                              </ul>
+                            } @else {
+                              <p class="text-muted">None recorded.</p>
+                            }
+                          </div>
+                          <div>
+                            <h3 class="detail__heading">Cons</h3>
+                            @if (row.cons.length > 0) {
+                              <ul class="detail__list detail__list--cons">
+                                @for (con of row.cons; track $index) {
+                                  <li>{{ con }}</li>
+                                }
+                              </ul>
+                            } @else {
+                              <p class="text-muted">None recorded.</p>
+                            }
+                          </div>
+                        </div>
+                      </div>
+                    } @else {
+                      <p class="detail__pending">
+                        <span class="badge badge--muted">AI analysis pending</span>
+                        AI enrichment is disabled by default; thesis, pros and cons will appear once
+                        it runs.
+                      </p>
+                    }
+                  </td>
+                </tr>
+              }
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+
+    <nav class="pagination" aria-label="Leaderboard pagination">
+      <button type="button" class="btn" [disabled]="!hasPrev()" (click)="previousPage()">
+        Previous
+      </button>
+      <span class="pagination__label">Page {{ page() }}</span>
+      <button type="button" class="btn" [disabled]="!hasNext()" (click)="nextPage()">Next</button>
+    </nav>
+  }
+}

@@ -1,0 +1,197 @@
+<h1 class="page-heading">Scrape control &amp; jobs</h1>
+<p class="page-subtitle">
+  Scrapes run in the background. The API returns immediately and progress is polled every few
+  seconds.
+</p>
+
+<section class="card control" aria-live="polite" aria-atomic="true">
+  <div class="control__row">
+    <button type="button" class="btn btn--primary" [disabled]="!canStart()" (click)="runScrape()">
+      {{ isRunning() ? 'Scrape running…' : 'Run scrape' }}
+    </button>
+
+    @if (isStale()) {
+      <p class="control__warning" role="alert">
+        The monitored job is no longer available — it may have been cleared. You can start a new
+        scrape.
+      </p>
+    }
+  </div>
+
+  @if (actionError()) {
+    <p class="control__error" role="alert">{{ actionError() }}</p>
+  }
+
+  @if (job(); as active) {
+    <div class="progress-block">
+      <div class="progress-block__head">
+        <strong>Job #{{ active.id }}</strong>
+        <span class="badge badge--muted">{{ statusLabel() }}</span>
+        @if (active.stage) {
+          <span class="text-muted">{{ stageLabel() }}</span>
+        }
+      </div>
+
+      <div
+        class="progress"
+        role="progressbar"
+        [attr.aria-valuenow]="progress()"
+        aria-valuemin="0"
+        aria-valuemax="100"
+      >
+        <span class="progress__bar" [style.inline-size.%]="progress()"></span>
+      </div>
+
+      <dl class="counters">
+        <div>
+          <dt>Elapsed</dt>
+          <dd>
+            {{
+              active.status === 'completed' || active.status === 'failed'
+                ? timestamp(active.finished_at)
+                : elapsed()
+            }}
+          </dd>
+        </div>
+        <div>
+          <dt>Funds found</dt>
+          <dd>{{ active.funds_found ?? '—' }}</dd>
+        </div>
+        <div>
+          <dt>Stocks</dt>
+          <dd>{{ active.stocks ?? '—' }}</dd>
+        </div>
+      </dl>
+
+      @if (active.status === 'completed' && active.result; as result) {
+        <div class="result">
+          <h2 class="result__title">Scrape completed</h2>
+          <p class="result__summary">
+            {{ result.funds }} fund(s), {{ result.stocks }} stock(s){{
+              result.stock_metrics ? ', ' + result.stock_metrics + ' with metrics' : ''
+            }}
+            · {{ result.changes.added }} added, {{ result.changes.removed }} removed
+          </p>
+          <button type="button" class="btn" (click)="refreshData()">Refresh data</button>
+        </div>
+      }
+
+      @if (active.status === 'failed') {
+        <div class="result result--failed" role="alert">
+          <h2 class="result__title">Scrape failed</h2>
+          <p class="result__summary">{{ active.error ?? 'No error detail was recorded.' }}</p>
+          <button
+            type="button"
+            class="btn btn--primary"
+            [disabled]="!canStart()"
+            (click)="runScrape()"
+          >
+            Retry
+          </button>
+        </div>
+      }
+    </div>
+  } @else if (!isStale()) {
+    <p class="text-muted">No active scrape job. Trigger one to refresh the data.</p>
+  }
+</section>
+
+@if (log().length > 0) {
+  <section class="card log" aria-label="Job stage transitions">
+    <h2 class="log__title">Activity log</h2>
+    <ul class="log__list">
+      @for (line of log(); track $index) {
+        <li class="log__line">{{ line }}</li>
+      }
+    </ul>
+  </section>
+}
+
+<h2 class="section-heading">Recent jobs</h2>
+
+@switch (historyState()) {
+  @case ('loading') {
+    <div class="table-wrap" aria-busy="true">
+      <table class="data-table">
+        <caption class="visually-hidden">
+          Loading recent scrape jobs
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">ID</th>
+            <th scope="col">Status</th>
+            <th scope="col">Stage</th>
+            <th scope="col">Created</th>
+            <th scope="col">Finished</th>
+            <th scope="col">Error</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (placeholder of [1, 2, 3]; track placeholder) {
+            <tr>
+              @for (cell of [1, 2, 3, 4, 5, 6]; track cell) {
+                <td><span class="skeleton"></span></td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  @case ('error') {
+    <section class="card state state--error" role="alert">
+      <p class="state__title">Couldn’t load job history</p>
+      <p class="state__message">{{ historyError() }}</p>
+      <button type="button" class="btn btn--primary" (click)="loadHistory()">Retry</button>
+    </section>
+  }
+
+  @case ('empty') {
+    <section class="card state">
+      <p class="state__title">No scrape jobs yet</p>
+      <p class="state__message">Use “Run scrape” above to start the first one.</p>
+    </section>
+  }
+
+  @default {
+    <div class="table-wrap">
+      <table class="data-table">
+        <caption class="visually-hidden">
+          Recent scrape jobs
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">ID</th>
+            <th scope="col">Status</th>
+            <th scope="col">Stage</th>
+            <th scope="col">Created</th>
+            <th scope="col">Finished</th>
+            <th scope="col">Error</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (item of history(); track item.id) {
+            <tr>
+              <td class="num">{{ item.id }}</td>
+              <td>
+                <span
+                  class="badge"
+                  [class.badge--sell]="item.status === 'failed'"
+                  [class.badge--buy]="item.status === 'completed'"
+                  [class.badge--muted]="item.status === 'queued' || item.status === 'running'"
+                >
+                  {{ item.status }}
+                </span>
+              </td>
+              <td>{{ stageLabelFor(item.stage) }}</td>
+              <td class="text-muted">{{ timestamp(item.created_at) }}</td>
+              <td class="text-muted">{{ timestamp(item.finished_at) }}</td>
+              <td class="text-muted">{{ item.error ?? '—' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+}

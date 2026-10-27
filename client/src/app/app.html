@@ -1,0 +1,47 @@
+<header class="shell-header">
+  <div class="shell-header__inner">
+    <a class="brand" routerLink="/leaderboard">
+      <span class="brand__mark" aria-hidden="true">क</span>
+      <span class="brand__name">Kosha</span>
+    </a>
+
+    <nav class="nav" aria-label="Primary">
+      <a routerLink="/leaderboard" routerLinkActive="nav__link--active" class="nav__link">
+        Leaderboard
+      </a>
+      <a routerLink="/signals" routerLinkActive="nav__link--active" class="nav__link">
+        Sell signals
+      </a>
+      <a routerLink="/funds" routerLinkActive="nav__link--active" class="nav__link"> Funds </a>
+      <a routerLink="/jobs" routerLinkActive="nav__link--active" class="nav__link"> Jobs </a>
+    </nav>
+
+    <div class="scrape-indicator" aria-live="polite" aria-atomic="true">
+      @if (isRunning()) {
+        <span
+          class="scrape-indicator__dot scrape-indicator__dot--running"
+          aria-hidden="true"
+        ></span>
+        <span class="scrape-indicator__text"> Scrape #{{ job()?.id }} · {{ stageLabel() }} </span>
+      } @else if (isStale()) {
+        <span class="scrape-indicator__dot scrape-indicator__dot--idle" aria-hidden="true"></span>
+        <span class="scrape-indicator__text">Scrape state unknown</span>
+      } @else if (job(); as active) {
+        <span
+          class="scrape-indicator__dot"
+          [class.scrape-indicator__dot--failed]="active.status === 'failed'"
+          [class.scrape-indicator__dot--done]="active.status === 'completed'"
+          aria-hidden="true"
+        ></span>
+        <span class="scrape-indicator__text"> Scrape #{{ active.id }} · {{ statusLabel() }} </span>
+      } @else {
+        <span class="scrape-indicator__dot scrape-indicator__dot--idle" aria-hidden="true"></span>
+        <span class="scrape-indicator__text">Idle</span>
+      }
+    </div>
+  </div>
+</header>
+
+<main class="shell-main">
+  <router-outlet />
+</main>

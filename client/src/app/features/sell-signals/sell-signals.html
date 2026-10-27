@@ -1,0 +1,133 @@
+<h1 class="page-heading">Sell signals</h1>
+<p class="page-subtitle">
+  Stocks removed from a followed category since the previous detection run — consider selling.
+</p>
+
+<div class="toolbar">
+  @if (state() === 'success' || state() === 'empty') {
+    <label class="toggle">
+      <input type="checkbox" [checked]="hideEmpty()" (change)="toggleHideEmpty()" />
+      <span>Hide categories with no changes</span>
+    </label>
+  }
+  <button type="button" class="btn btn--ghost toolbar__refresh" (click)="load()">Refresh</button>
+</div>
+
+@switch (state()) {
+  @case ('loading') {
+    <div class="cards" aria-busy="true">
+      @for (placeholder of [1, 2, 3]; track placeholder) {
+        <section class="card signal-card">
+          <span class="skeleton skeleton--title"></span>
+          <span class="skeleton"></span>
+          <span class="skeleton"></span>
+        </section>
+      }
+    </div>
+  }
+
+  @case ('error') {
+    <section class="card state state--error" role="alert">
+      <p class="state__title">Couldn’t load sell signals</p>
+      <p class="state__message">{{ error() }}</p>
+      <button type="button" class="btn btn--primary" (click)="retry()">Retry</button>
+    </section>
+  }
+
+  @case ('empty') {
+    <section class="card state">
+      <p class="state__title">No categories to follow yet</p>
+      <p class="state__message">
+        Categories are discovered from tracked funds. Run a scrape to populate them.
+      </p>
+      <a class="btn btn--primary" routerLink="/jobs">Run a scrape</a>
+    </section>
+  }
+
+  @default {
+    @if (totalRemoved() > 0 || totalAdded() > 0) {
+      <div class="banner card" role="status">
+        <span class="badge badge--sell">
+          <span aria-hidden="true">▼</span> {{ totalRemoved() }} removed
+        </span>
+        <span class="badge badge--buy">
+          <span aria-hidden="true">▲</span> {{ totalAdded() }} added
+        </span>
+        <span class="banner__text">across followed categories</span>
+      </div>
+    }
+
+    <div class="cards">
+      @for (result of visibleResults(); track result.category) {
+        @if (isVisible(result)) {
+          <section class="card signal-card">
+            <header class="signal-card__head">
+              <h2 class="signal-card__title">{{ result.category }}</h2>
+
+              @if (result.changes; as changes) {
+                @if (hasHistory(result)) {
+                  <p class="signal-card__meta text-muted">
+                    Run #{{ changes.run_id }} · {{ timestamp(changes.run_at) }}
+                  </p>
+                }
+              }
+
+              <button
+                type="button"
+                class="btn btn--ghost signal-card__follow"
+                [attr.aria-pressed]="isFollowed(result.category)"
+                (click)="toggleFollowed(result.category)"
+              >
+                {{ isFollowed(result.category) ? 'Following' : 'Follow' }}
+              </button>
+            </header>
+
+            @if (result.error) {
+              <p class="signal-card__inline-error" role="alert">
+                {{ result.category }}: {{ result.error }}
+              </p>
+            } @else if (!hasHistory(result)) {
+              <p class="signal-card__none">No changes recorded for this category.</p>
+            } @else if (isEmptyResult(result)) {
+              <p class="signal-card__none">No changes recorded in the latest run.</p>
+            } @else {
+              @if (result.changes?.removed?.length) {
+                <div class="signal-group signal-group--sell">
+                  <h3 class="signal-group__title">
+                    <span aria-hidden="true">▼</span> Sell signals (removed)
+                  </h3>
+                  <ul class="signal-group__list">
+                    @for (change of result.changes?.removed; track change.stock_id) {
+                      <li class="signal signal--sell">
+                        <span class="signal__name">{{ change.name }}</span>
+                        <span class="signal__note">
+                          was removed from {{ result.category }} — consider selling
+                        </span>
+                      </li>
+                    }
+                  </ul>
+                </div>
+              }
+
+              @if (result.changes?.added?.length) {
+                <div class="signal-group signal-group--buy">
+                  <h3 class="signal-group__title">
+                    <span aria-hidden="true">▲</span> Added (informational)
+                  </h3>
+                  <ul class="signal-group__list">
+                    @for (change of result.changes?.added; track change.stock_id) {
+                      <li class="signal signal--buy">
+                        <span class="signal__name">{{ change.name }}</span>
+                        <span class="signal__note">was added to {{ result.category }}</span>
+                      </li>
+                    }
+                  </ul>
+                </div>
+              }
+            }
+          </section>
+        }
+      }
+    </div>
+  }
+}
