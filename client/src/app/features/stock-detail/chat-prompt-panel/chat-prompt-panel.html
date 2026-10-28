@@ -1,0 +1,72 @@
+<div class="cp">
+  <button
+    type="button"
+    class="btn btn--ghost cp__trigger"
+    [attr.aria-expanded]="open()"
+    (click)="open() ? close() : generate()"
+  >
+    {{ open() ? 'Hide chat prompt' : 'Copy chat prompt' }}
+  </button>
+  <span class="text-muted cp__hint"
+    >For ChatGPT, Claude, Gemini or a local model: start a conversation with all of this stock's
+    data.</span
+  >
+
+  @if (open()) {
+    <div class="cp__panel" role="region" aria-label="Chat prompt">
+      @switch (state()) {
+        @case ('loading') {
+          <p class="text-muted">
+            <span class="spinner" aria-hidden="true"></span> Building the prompt…
+          </p>
+        }
+        @case ('error') {
+          <div class="state state--error" role="alert">
+            <p class="state__message">{{ error() }}</p>
+          </div>
+        }
+        @default {
+          @if (result(); as r) {
+            <div class="cp__bar">
+              <span class="text-muted cp__size"
+                >{{ size(r) }} · {{ r.held ? 'hold or sell' : 'buy or ignore' }}</span
+              >
+              <span class="cp__actions">
+                <button type="button" class="btn btn--primary" (click)="copy()">
+                  {{ copied() === 'done' ? 'Copied ✓' : 'Copy' }}
+                </button>
+                <button type="button" class="btn" (click)="download()">Download .md</button>
+              </span>
+            </div>
+            @if (copied() === 'failed') {
+              <p class="cp__warn" role="alert">
+                Couldn’t copy automatically. Click in the box, select all (Ctrl/Cmd + A) and copy.
+              </p>
+            }
+            @if (r.errors.length > 0) {
+              <p class="cp__warn">
+                Some data couldn’t be fetched and is missing from the prompt:
+                @for (e of r.errors; track $index) {
+                  {{ e.section ?? e.source }}{{ $last ? '.' : ', ' }}
+                }
+              </p>
+            }
+            <textarea
+              #promptText
+              class="cp__text"
+              readonly
+              rows="14"
+              [value]="r.prompt"
+              aria-label="Chat prompt text"
+            ></textarea>
+            <p class="text-muted cp__note">
+              Paste it as your first message. The assistant answers from this data only and then
+              waits for your questions. Data is current as of today; build a new prompt on another
+              day for fresh numbers.
+            </p>
+          }
+        }
+      }
+    </div>
+  }
+</div>

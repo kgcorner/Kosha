@@ -49,7 +49,12 @@ const scrapeJob = new ScrapeJob({
 });
 const dryRunService = new ScrapeDryRunService({ configuration: scraping, sourceRegistry });
 const fundamentalsService = createFundamentalsService(appConfig.fundamentals, repositories);
-const analysisService = new StockAnalysisService({ repositories, fundamentalsService, llm });
+const analysisService = new StockAnalysisService({
+  repositories,
+  fundamentalsService,
+  llm,
+  timezone: appConfig.fundamentals?.timezone
+});
 
 const server = createApp({ repositories, scrapeJob, dryRunService, fundamentalsService, analysisService }).listen(appConfig.port, () => {
   console.log(`Stock recommender API listening on port ${appConfig.port}`);

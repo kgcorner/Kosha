@@ -8,23 +8,25 @@ export const VERDICTS = Object.freeze({
   held: ["HOLD", "SELL"]
 });
 
-const SYSTEM_PROMPT = `You are a careful equity analyst for Indian listed stocks (NSE/BSE), helping one retail investor decide what to do with a single stock.
+// The analyst brief is shared by the API call (JSON output) and the chat-prompt
+// export (conversational output); only the output instructions differ.
+const PROMPT_ROLE = `You are a careful equity analyst for Indian listed stocks (NSE/BSE), helping one retail investor decide what to do with a single stock.`;
 
-Evidence you receive (all in DATA; any part may be missing):
+const PROMPT_EVIDENCE = `Evidence you receive (all in DATA; any part may be missing):
 1. FUND SIGNAL: how many actively managed mutual funds tracked by the app hold the stock, overall and per SEBI category, from official monthly AMC portfolio disclosures (roughly 4-6 weeks old). Broad holding means professional managers independently backed it; it is not a guarantee (disclosures lag; funds crowd into the same names).
 2. PROFILE: quote, valuation and quality ratios (P/E vs industry P/E, P/B, ROE, ROCE, debt/equity, dividend yield), growth rates, pros/cons, technical indicators (RSI, moving averages, MACD, ...) and analyst consensus ratings.
 3. FINANCIALS: quarterly and annual P&L, balance sheet, cash flow and ratios, with period-over-period % changes.
 4. PRICE: statistics computed from one year of daily prices: returns (1w-1y), distance from the 52-week high/low, 50/200-day moving averages, volume and delivery %, volatility, max drawdown, weekly closes.
 5. OWNERSHIP: quarterly promoter / FII / DII / public holding and promoter pledge trend.
 6. ANALYST FORECASTS: consensus EPS/revenue/price estimates and how past estimates compared with actuals.
-7. MARKET: market-wide FII/DII cash flows and market pulse. Context only: it describes the whole market, not this company.
+7. MARKET: market-wide FII/DII cash flows and market pulse. Context only: it describes the whole market, not this company.`;
 
-Reading the data:
+const PROMPT_READING = `Reading the data:
 - Time series are ordered oldest to newest (maps keyed by period, and "periods" lists). The last entry is the latest.
 - Use ONLY the data provided. Never invent or estimate numbers. Every number you cite must appear in DATA.
-- If something important is missing or stale (see stale_sections), say so in data_gaps and lower your confidence.
+- If something important is missing or stale (listed as stale), say so in data_gaps and lower your confidence.`;
 
-How to weigh it:
+const PROMPT_WEIGHING = `How to weigh it:
 - Business quality and trend first: growth of revenue and profit, margins, ROE/ROCE, balance-sheet risk (debt, interest cover), cash flow versus reported profit.
 - Valuation relative to the stock's own industry and growth; a cheap stock with falling earnings is not cheap.
 - Fund consensus and its breadth; rising institutional (FII/DII) ownership supports the thesis, steady selling weakens it.
@@ -32,13 +34,18 @@ How to weigh it:
 - Analyst views are one input; analysts are often optimistic and targets move. Note when estimates were missed.
 - Red flags: high or rising promoter pledge, a falling promoter stake, negative or falling operating cash flow while profits rise, rising debt, deteriorating asset quality (for lenders).
 - Some companies have no promoter group by design (many banks and widely held companies). Zero promoter holding is not a red flag by itself; only a declining promoter stake is.
-- Small caps carry extra liquidity, governance and volatility risk; size positions accordingly in what you write.
+- Small caps carry extra liquidity, governance and volatility risk; size positions accordingly in what you write.`;
 
-Output:
+const PROMPT_OUTPUT_JSON = `Output:
 - Pick exactly one verdict from the allowed set in the request. Be decisive but honest; "IGNORE" or "SELL" are fine answers.
 - price_trend: one or two sentences on price, momentum and technicals. ownership_trend: institutional and promoter holding trend. analyst_view: consensus and forecasts (say "not available" if missing).
 - Keep every list item to one short sentence. Write for a smart non-professional.
 - This is decision support, not investment advice.`;
+
+const SYSTEM_PROMPT = [PROMPT_ROLE, PROMPT_EVIDENCE, PROMPT_READING, PROMPT_WEIGHING, PROMPT_OUTPUT_JSON].join("\n\n");
+
+/** The analyst brief without the JSON output contract, for chat sessions. */
+const CHAT_RULES = [PROMPT_ROLE, PROMPT_EVIDENCE, PROMPT_READING, PROMPT_WEIGHING].join("\n\n");
 
 /**
  * Lazy LLM analysis for one stock: fund-consensus signal + Tapetide
@@ -47,29 +54,43 @@ Output:
  * different model or prompt), so repeat views cost nothing.
  */
 export class StockAnalysisService {
-  constructor({ repositories, fundamentalsService, llm, now = Date.now, maxSectionChars = 12000 }) {
+  constructor({ repositories, fundamentalsService, llm, now = Date.now, maxSectionChars = 12000, timezone = "Asia/Kolkata" }) {
     this.repositories = repositories;
     this.fundamentalsService = fundamentalsService;
     this.llm = llm;
     this.now = now;
     this.maxSectionChars = maxSectionChars;
+    this.timezone = timezone;
+    this.dayFormat = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" });
     this.inFlight = new Map();
   }
 
-  async analyze(stockId, { held = false, refresh = false } = {}) {
-    const key = `${stockId}|${held}|${refresh}`;
+  /**
+   * Cache rule (mirrors fundamentals): every LLM answer is stored, and the
+   * model is called at most once per stock and `held` flag per calendar day.
+   * - Same day: the stored answer is returned, unless it was produced while
+   *   some data was missing and that data is available now (one re-run).
+   * - Later day: the model runs again only if the data content changed
+   *   (fetch timestamps are ignored), or the model / prompt version changed.
+   */
+  async analyze(stockId, { held = false } = {}) {
+    const key = `${stockId}|${held}`;
     if (this.inFlight.has(key)) return this.inFlight.get(key);
-    const promise = this.run(stockId, { held, refresh }).finally(() => this.inFlight.delete(key));
+    const promise = this.run(stockId, { held }).finally(() => this.inFlight.delete(key));
     this.inFlight.set(key, promise);
     return promise;
   }
 
-  async run(stockId, { held, refresh }) {
+  /**
+   * Everything the model would see for one stock (fundamentals and market
+   * data are fetched lazily under their own once-per-day rule). Returns null
+   * for an unknown stock. Shared by the analysis and the chat-prompt export.
+   */
+  async gather(stockId) {
     const stock = this.repositories.stocks.getById(stockId);
     if (!stock) return null;
 
-    // Fundamentals are themselves lazy + cached; a failure there still leaves
-    // the fund signal, so the analysis degrades instead of failing.
+    // A failure fetching data still leaves the fund signal, so callers degrade instead of failing.
     let fundamentals = null;
     const errors = [];
     if (this.fundamentalsService) {
@@ -91,14 +112,25 @@ export class StockAnalysisService {
     }
     const fundSignal = fundamentals?.fund_signal ?? this.repositories.aggregation.signalFor(stockId);
     const digest = buildDigest({ stock, fundSignal, fundamentals, market, maxSectionChars: this.maxSectionChars });
-    const model = this.llm.describe();
-    const inputHash = createHash("sha256")
-      .update(JSON.stringify({ digest, held, model, v: PROMPT_VERSION }))
-      .digest("hex");
+    return { stock, digest, errors };
+  }
 
-    const cached = this.repositories.analyses.get(stockId, held);
-    if (!refresh && cached && cached.input_hash === inputHash) {
-      return this.respond({ stock, held, row: cached, cached: true, digest, errors });
+  async run(stockId, { held }) {
+    const gathered = await this.gather(stockId);
+    if (!gathered) return null;
+    const { stock, digest, errors } = gathered;
+    const model = this.llm.describe();
+    const inputHash = contentHash({ digest, held, model, v: PROMPT_VERSION });
+    const sections = availableSections(digest);
+
+    const stored = this.repositories.analyses.get(stockId, held);
+    if (stored) {
+      const sameDay = this.dayKey(parseUtc(stored.created_at)) === this.dayKey(this.now());
+      const storedSections = new Set(stored.input_sections ?? []);
+      const gainedData = sections.some((name) => !storedSections.has(name));
+      if ((sameDay && !gainedData) || stored.input_hash === inputHash) {
+        return this.respond({ stock, held, row: stored, cached: true, digest, errors });
+      }
     }
 
     const allowed = held ? VERDICTS.held : VERDICTS.notHeld;
@@ -113,9 +145,38 @@ export class StockAnalysisService {
       provider: model.provider,
       model: model.model,
       inputHash,
+      inputSections: sections,
       result: analysis
     });
     return this.respond({ stock, held, row, cached: false, digest, errors });
+  }
+
+  /**
+   * A self-contained Markdown prompt to start a conversation about this stock
+   * in any chat assistant (ChatGPT, Claude, Gemini, a local model): role and
+   * rules, the investor's situation, how to read the data, every data section,
+   * and what to answer first. Uses the same data as the analysis endpoint.
+   */
+  async chatPrompt(stockId, { held = false } = {}) {
+    const gathered = await this.gather(stockId);
+    if (!gathered) return null;
+    const { stock, digest, errors } = gathered;
+    const prompt = renderChatPrompt({ digest, held, today: this.dayKey(this.now()), timezone: this.timezone });
+    return {
+      stock: { id: stock.id, name: stock.name, isin: stock.isin ?? null, symbol: digest.stock.symbol },
+      held,
+      prompt,
+      chars: prompt.length,
+      // Rough guide for model context limits (~4 characters per token).
+      approx_tokens: Math.ceil(prompt.length / 4),
+      sections: availableSections(digest),
+      stale_sections: digest.stale_sections,
+      errors
+    };
+  }
+
+  dayKey(epochMs) {
+    return this.dayFormat.format(new Date(epochMs));
   }
 
   respond({ stock, held, row, cached, digest, errors }) {
@@ -126,6 +187,7 @@ export class StockAnalysisService {
       model: { provider: row.provider, model: row.model },
       generated_at: row.created_at,
       cached,
+      cache_policy: { rule: "one model call per stock per held flag per calendar day; later days only if the data changed", timezone: this.timezone },
       inputs: {
         fund_signal: digest.fund_signal,
         fundamentals_sections: Object.keys(digest.fundamentals),
@@ -137,6 +199,116 @@ export class StockAnalysisService {
       disclaimer: "Decision support generated by an AI model from public data. Not investment advice."
     };
   }
+}
+
+function availableSections(digest) {
+  return [
+    ...Object.keys(digest.fundamentals ?? {}),
+    ...Object.keys(digest.market ?? {}).map((name) => `market.${name}`)
+  ];
+}
+
+// Hash of the data content only: `as_of` fetch timestamps are dropped, so a
+// daily re-fetch that returns the same numbers does not trigger a new LLM call.
+export function contentHash(value) {
+  const strip = (node) => {
+    if (Array.isArray(node)) return node.map(strip);
+    if (node && typeof node === "object") {
+      const out = {};
+      for (const [key, entry] of Object.entries(node)) if (key !== "as_of") out[key] = strip(entry);
+      return out;
+    }
+    return node;
+  };
+  return createHash("sha256").update(JSON.stringify(strip(value))).digest("hex");
+}
+
+function parseUtc(text) {
+  const value = Date.parse(`${String(text ?? "").replace(" ", "T")}${String(text ?? "").endsWith("Z") ? "" : "Z"}`);
+  return Number.isFinite(value) ? value : 0;
+}
+
+const SECTION_GUIDE = [
+  ["fund_signal", "Fund signal", "How many actively managed mutual funds tracked by Kosha hold this stock, overall and per SEBI category (from official monthly AMC portfolio disclosures, about 4-6 weeks old), with average weight per fund."],
+  ["profile", "Company profile", "Quote, valuation and quality ratios, growth rates, pros/cons, technical indicators and analyst consensus ratings."],
+  ["financials", "Financial statements", "Quarterly and annual P&L, balance sheet, cash flow and ratios, with period-over-period % changes."],
+  ["price_history", "Price statistics", "Computed by Kosha from one year of daily prices: returns, distance from the 52-week high/low, 50/200-day averages, volume and delivery %, volatility, drawdown, weekly closes."],
+  ["shareholding", "Shareholding", "Quarterly promoter / FII / DII / public holding (%)."],
+  ["pledge", "Promoter pledge", "Promoter shares pledged, by quarter."],
+  ["forecasts", "Analyst forecasts", "Consensus estimates and how past estimates compared with actuals."]
+];
+
+/**
+ * JSON with one line per first- and second-level key: readable when skimming,
+ * far fewer tokens than fully pretty-printed JSON. Still valid JSON.
+ */
+export function compactJson(value, depth = 0) {
+  const pad = " ".repeat(depth + 1);
+  if (value && typeof value === "object" && depth < 2) {
+    const entries = Array.isArray(value)
+      ? value.map((entry) => `${pad}${compactJson(entry, depth + 1)}`)
+      : Object.entries(value).map(([key, entry]) => `${pad}${JSON.stringify(key)}: ${compactJson(entry, depth + 1)}`);
+    if (entries.length === 0) return Array.isArray(value) ? "[]" : "{}";
+    const [open, close] = Array.isArray(value) ? ["[", "]"] : ["{", "}"];
+    return `${open}\n${entries.join(",\n")}\n${" ".repeat(depth)}${close}`;
+  }
+  return JSON.stringify(value);
+}
+
+/** Markdown chat-session prompt built from the same digest the analysis uses. */
+export function renderChatPrompt({ digest, held, today, timezone = "Asia/Kolkata" }) {
+  const name = digest.stock.name;
+  const id = [digest.stock.symbol && `NSE: ${digest.stock.symbol}`, digest.stock.isin && `ISIN ${digest.stock.isin}`].filter(Boolean).join(", ");
+  const json = (value) => ["```json", compactJson(value), "```"].join("\n");
+  const lines = [
+    `# Stock decision session: ${name}${id ? ` (${id})` : ""}`,
+    "",
+    `Prepared by Kosha on ${today} (${timezone}). Everything below is data; there is nothing else to look up unless I give it to you.`,
+    "",
+    "## Your role and rules",
+    "",
+    CHAT_RULES,
+    "",
+    "## My situation",
+    "",
+    held
+      ? "I ALREADY HOLD this stock. Help me decide whether to HOLD or SELL."
+      : "I do NOT hold this stock. Help me decide whether to BUY or IGNORE it.",
+    "",
+    "## How to read the data",
+    "",
+    "- Time series are ordered oldest to newest; the last entry is the latest. Amounts are in ₹ crore unless a field says otherwise.",
+    "- `as_of` is when Kosha fetched that section (UTC).",
+    ...(digest.stale_sections.length
+      ? [`- These sections could not be refreshed today and may be out of date: ${digest.stale_sections.join(", ")}.`]
+      : [])
+  ];
+  const present = SECTION_GUIDE.filter(([key]) => key === "fund_signal" ? digest.fund_signal : digest.fundamentals[key]);
+  const missing = SECTION_GUIDE.filter(([key]) => key !== "fund_signal" && !digest.fundamentals[key]).map(([, title]) => title);
+  if (missing.length) lines.push(`- Not available for this session: ${missing.join(", ")}.`);
+  lines.push("", "## Data");
+  for (const [key, title, description] of present) {
+    lines.push("", `### ${title}`, "", description, "");
+    lines.push(json(key === "fund_signal" ? digest.fund_signal : digest.fundamentals[key]));
+  }
+  for (const [key, section] of Object.entries(digest.fundamentals)) {
+    if (SECTION_GUIDE.some(([known]) => known === key)) continue;
+    lines.push("", `### ${key}`, "", json(section));
+  }
+  if (Object.keys(digest.market ?? {}).length) {
+    lines.push("", "### Market-wide context (background only, not about this company)", "", "FII/DII cash flows and market pulse for the whole Indian market.", "", json(digest.market));
+  }
+  lines.push(
+    "",
+    "## What I want from you",
+    "",
+    "1. Start with your verdict (" + (held ? "HOLD or SELL" : "BUY or IGNORE") + ") and your confidence (low / medium / high), in two or three sentences.",
+    "2. Then give: fund consensus, valuation, price trend, ownership trend, analyst view, strengths, risks, red flags, what would change your view, and data gaps. Cite numbers only from the data above.",
+    "3. Then stop and wait for my follow-up questions. When a question needs data you don't have, say exactly what you would need instead of guessing.",
+    "",
+    "This is decision support, not investment advice."
+  );
+  return lines.join("\n");
 }
 
 export function buildPrompt({ digest, held, allowed }) {

@@ -88,9 +88,9 @@ export function createApiRouter({ repositories, scrapeJob, dryRunService, fundam
   });
 
   // On-demand LLM verdict for one stock from Kosha's fund signal + fundamentals.
-  //   ?held=true     the user owns it → HOLD/SELL (default BUY/IGNORE)
-  //   ?refresh=true  re-run the model even if inputs are unchanged
-  // Cached per (stock, held) until the inputs change.
+  //   ?held=true  the user owns it → HOLD/SELL (default BUY/IGNORE)
+  // Stored per (stock, held): the model runs at most once per day, and on later
+  // days only when the underlying data changed.
   router.get("/stocks/:id/analysis", (request, response, next) => {
     try {
       if (!analysisService) {
@@ -102,7 +102,7 @@ export function createApiRouter({ repositories, scrapeJob, dryRunService, fundam
       }
       const flag = (value) => ["1", "true", "yes"].includes(String(value ?? "").toLowerCase());
       analysisService
-        .analyze(id, { held: flag(request.query.held), refresh: flag(request.query.refresh) })
+        .analyze(id, { held: flag(request.query.held) })
         .then((result) => {
           if (!result) return response.status(404).json({ error: `Stock #${request.params.id} not found` });
           response.json(result);
@@ -123,6 +123,35 @@ export function createApiRouter({ repositories, scrapeJob, dryRunService, fundam
       return response.status(503).json({ error: "Fundamentals provider is not configured" });
     }
     fundamentalsService.getMarketContext().then((result) => response.json(result)).catch(next);
+  });
+
+  // A ready-to-paste Markdown prompt that starts a chat session about this
+  // stock in any assistant, containing the same data the analysis uses.
+  // No LLM call is made; data is fetched under the once-per-day rule.
+  router.get("/stocks/:id/chat-prompt", (request, response, next) => {
+    try {
+      if (!analysisService) {
+        return response.status(503).json({ error: "LLM analysis is not configured" });
+      }
+      const id = Number(request.params.id);
+      if (!Number.isInteger(id)) {
+        return response.status(404).json({ error: `Stock #${request.params.id} not found` });
+      }
+      const held = ["1", "true", "yes"].includes(String(request.query.held ?? "").toLowerCase());
+      analysisService
+        .chatPrompt(id, { held })
+        .then((result) => {
+          if (!result) return response.status(404).json({ error: `Stock #${request.params.id} not found` });
+          if (String(request.query.format ?? "").toLowerCase() === "text") {
+            response.type("text/markdown; charset=utf-8").send(result.prompt);
+            return;
+          }
+          response.json(result);
+        })
+        .catch(next);
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.get("/funds", (_request, response, next) => {

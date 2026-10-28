@@ -195,13 +195,12 @@
               {{ held() ? 'Should I hold or sell?' : 'Should I buy?' }}
             }
           </button>
-          @if (analysis() && analysisState() !== 'loading') {
-            <button type="button" class="btn btn--ghost" (click)="runAnalysis(true)">Re-run</button>
-          }
           @if (analysisState() === 'loading') {
             <span class="text-muted ai__wait">This can take up to a minute.</span>
           }
         </div>
+
+        <app-chat-prompt-panel [stockId]="d.stock.id" [held]="held()" />
 
         @if (analysisState() === 'error') {
           <div class="state state--error" role="alert">
@@ -294,7 +293,8 @@
 
           <p class="ai__meta text-muted">
             {{ a.model.model }} via {{ a.model.provider }} ·
-            {{ a.cached ? 'stored result from' : 'generated' }} {{ timestamp(a.generated_at) }}
+            {{ a.cached ? 'stored result from' : 'generated' }} {{ timestamp(a.generated_at) }} ·
+            the model runs at most once a day, and again only when the data changes
           </p>
           <p class="ai__disclaimer">{{ a.disclaimer }}</p>
         }

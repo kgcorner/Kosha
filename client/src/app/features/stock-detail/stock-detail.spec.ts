@@ -239,7 +239,6 @@ describe('StockDetail', () => {
 
     const request = http.expectOne((r) => r.url === '/api/stocks/7/analysis');
     expect(request.request.params.get('held')).toBe('false');
-    expect(request.request.params.has('refresh')).toBe(false);
     request.flush(analysis());
     await fixture.whenStable();
     fixture.detectChanges();
@@ -254,10 +253,12 @@ describe('StockDetail', () => {
     expect(text).toContain('Older stored data was used for: pledge');
     expect(text).toContain('google/gemini-2.5-flash via openrouter');
     expect(text).toContain('Not investment advice');
+    expect(text).toContain('the model runs at most once a day');
+    expect(text).not.toContain('Re-run');
     expect((fixture.nativeElement as HTMLElement).querySelector('.verdict--buy')).not.toBeNull();
   });
 
-  it('asks HOLD/SELL when the user holds the stock, remembers it, and re-runs with refresh', async () => {
+  it('asks HOLD/SELL when the user holds the stock, and remembers it', async () => {
     const fixture = await loaded();
     const toggle = (fixture.nativeElement as HTMLElement).querySelector(
       '.held-toggle input',
@@ -273,12 +274,6 @@ describe('StockDetail', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     expect((fixture.nativeElement as HTMLElement).querySelector('.verdict--sell')).not.toBeNull();
-
-    button(fixture, /Re-run/).click();
-    const rerun = http.expectOne((r) => r.url === '/api/stocks/7/analysis');
-    expect(rerun.request.params.get('refresh')).toBe('true');
-    expect(rerun.request.params.get('held')).toBe('true');
-    rerun.flush(analysis({ held: true, cached: false }));
   });
 
   it('restores the remembered held flag on load', async () => {

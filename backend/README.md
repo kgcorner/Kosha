@@ -26,7 +26,7 @@ The SQLite database is created at `data/stocks.sqlite` by default.
 
 ### AI analysis (on demand, OpenAI-compatible)
 
-`GET /api/stocks/:id/analysis` sends Kosha's fund signal plus the stock's fundamentals to an LLM and returns a verdict: **BUY / IGNORE** by default, or **HOLD / SELL** with `?held=true`. The response includes confidence, a summary, fund consensus, valuation, strengths, risks, red flags, what would change the view, and data gaps. Results are cached per stock (and per held flag) until the inputs change (new fundamentals or a new scrape); `?refresh=true` forces a new run.
+`GET /api/stocks/:id/analysis` sends Kosha's fund signal plus the stock's fundamentals to an LLM and returns a verdict: **BUY / IGNORE** by default, or **HOLD / SELL** with `?held=true`. The response includes confidence, a summary, fund consensus, valuation, strengths, risks, red flags, what would change the view, and data gaps. Results are stored per stock and per held flag: the model runs **at most once per calendar day**, and on later days only when the data content changed (or, same day, when a previously missing data section became available). `GET /api/stocks/:id/chat-prompt` builds a ready-to-paste Markdown prompt with the same data for starting a session in any chat LLM, without calling the model.
 
 Any OpenAI-compatible endpoint works; configure the `ai` block in `config/app.json`:
 
@@ -75,7 +75,8 @@ To add a source, implement `SourceAdapter` in `src/scrapers/sourceAdapter.js`, i
 - `GET /api/stocks/:id` — everything the scrape stored about one stock (holding funds with weight/shares/value, category coverage, recent changes). No external calls.
 - `GET /api/stocks/:id/fundamentals?sections=profile,financials,shareholding,pledge` — **lazy** fundamentals from Tapetide plus Kosha's `fund_signal`. Never called by the scrape job. Every response is stored in `stock_fundamentals`, and the provider is called **at most once per stock per section per calendar day** (`fundamentals.timezone`, default IST); later requests that day are served from the database. When the provider fails, the last stored copy is returned with `stale: true` and an `errors` entry.
 - `GET /api/market` — market-wide FII/DII flows and market pulse (Tapetide), fetched at most once per day in total; background for the AI analysis.
-- `GET /api/stocks/:id/analysis?held=false&refresh=false` — **lazy** LLM verdict (BUY/IGNORE, or HOLD/SELL when `held=true`) from fund signal + fundamentals; cached until inputs change. 503 when no LLM is configured, 429 when rate-limited, 502 on model errors.
+- `GET /api/stocks/:id/analysis?held=false` — **lazy** LLM verdict (BUY/IGNORE, or HOLD/SELL when `held=true`) from fund signal + fundamentals; at most one model call per stock per day, re-run on later days only when the data changed.
+- `GET /api/stocks/:id/chat-prompt?held=false&format=json|text` — Markdown prompt with all the stock's data for starting a session in any chat LLM; no model call. 503 when no LLM is configured, 429 when rate-limited, 502 on model errors.
 - `GET /api/funds` — tracked funds and their last scrape timestamp.
 - `GET /api/categories` — distinct fund categories (leaderboard filter options).
 - `GET /api/scrape/dry-run?category=Small%20Cap&fund=0&limit=5` — read-only selector heat-and-trial: one category → one fund → up to 5 holdings with every parsed data point (name, sector, instrument, weight, stock URL) **and each holding's scraped stock-page metrics** plus diagnostics.

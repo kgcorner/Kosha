@@ -6,7 +6,7 @@ import { CategoryChanges } from './models/category-changes';
 import { Fund } from './models/fund';
 import { LeaderboardRow } from './models/leaderboard-row';
 import { ScrapeJob } from './models/scrape-job';
-import { StockAnalysis } from './models/stock-analysis';
+import { ChatPrompt, StockAnalysis } from './models/stock-analysis';
 import { StockDetail } from './models/stock-detail';
 import { FundamentalsSectionName, StockFundamentals } from './models/stock-fundamentals';
 
@@ -69,17 +69,18 @@ export class ApiService {
 
   /**
    * AI verdict for one stock: BUY/IGNORE, or HOLD/SELL when `held` is true. The
-   * backend caches it until its inputs change; `refresh` re-runs the model.
+   * backend stores it and calls the model at most once per day (later days
+   * only when the data changed).
    */
-  getAnalysis(
-    stockId: number,
-    options: { held?: boolean; refresh?: boolean } = {},
-  ): Observable<StockAnalysis> {
-    let params = new HttpParams().set('held', String(options.held ?? false));
-    if (options.refresh) {
-      params = params.set('refresh', 'true');
-    }
+  getAnalysis(stockId: number, options: { held?: boolean } = {}): Observable<StockAnalysis> {
+    const params = new HttpParams().set('held', String(options.held ?? false));
     return this.http.get<StockAnalysis>(`${this.basePath}/stocks/${stockId}/analysis`, { params });
+  }
+
+  /** A ready-to-paste Markdown prompt to start a chat about this stock in any assistant. */
+  getChatPrompt(stockId: number, options: { held?: boolean } = {}): Observable<ChatPrompt> {
+    const params = new HttpParams().set('held', String(options.held ?? false));
+    return this.http.get<ChatPrompt>(`${this.basePath}/stocks/${stockId}/chat-prompt`, { params });
   }
 
   getFunds(): Observable<Fund[]> {

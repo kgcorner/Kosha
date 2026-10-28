@@ -170,6 +170,9 @@ export function createDatabase(databasePath) {
   ensureColumn(db, "fund_holdings", "market_value_cr", "REAL");
   ensureColumn(db, "fund_holdings", "as_of", "TEXT");
   ensureColumn(db, "stocks", "sector", "TEXT");
+  // Data sections an analysis was generated from (lets a same-day analysis made
+  // with missing data be redone once that data arrives).
+  ensureColumn(db, "stock_analyses", "input_sections", "TEXT");
   backfillWeightStats(db);
   return db;
 }

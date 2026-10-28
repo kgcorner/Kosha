@@ -238,20 +238,21 @@ export function createRepositories(db) {
     analyses: {
       get(stockId, held) {
         return parseAnalysisRow(db.prepare(
-          "SELECT stock_id, held, provider, model, input_hash, result, created_at FROM stock_analyses WHERE stock_id = ? AND held = ?"
+          "SELECT stock_id, held, provider, model, input_hash, input_sections, result, created_at FROM stock_analyses WHERE stock_id = ? AND held = ?"
         ).get(stockId, held ? 1 : 0));
       },
-      upsert(stockId, held, { provider, model, inputHash, result }) {
+      upsert(stockId, held, { provider, model, inputHash, inputSections = [], result }) {
         db.prepare(`
-          INSERT INTO stock_analyses (stock_id, held, provider, model, input_hash, result, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          INSERT INTO stock_analyses (stock_id, held, provider, model, input_hash, input_sections, result, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
           ON CONFLICT(stock_id, held) DO UPDATE SET
             provider = excluded.provider,
             model = excluded.model,
             input_hash = excluded.input_hash,
+            input_sections = excluded.input_sections,
             result = excluded.result,
             created_at = excluded.created_at
-        `).run(stockId, held ? 1 : 0, provider, model, inputHash, JSON.stringify(result));
+        `).run(stockId, held ? 1 : 0, provider, model, inputHash, JSON.stringify(inputSections), JSON.stringify(result));
         return this.get(stockId, held);
       }
     },
@@ -600,7 +601,13 @@ function parseFundamentalsRow(row) {
 
 function parseAnalysisRow(row) {
   if (!row) return null;
-  return { ...row, held: Boolean(row.held), result: JSON.parse(row.result) };
+  let inputSections = null;
+  try {
+    inputSections = row.input_sections ? JSON.parse(row.input_sections) : null;
+  } catch {
+    inputSections = null;
+  }
+  return { ...row, held: Boolean(row.held), input_sections: inputSections, result: JSON.parse(row.result) };
 }
 
 function finiteOrNull(value) {

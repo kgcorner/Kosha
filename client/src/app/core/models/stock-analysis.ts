@@ -27,7 +27,7 @@ export interface StockAnalysis {
   model: { provider: string; model: string };
   /** UTC `YYYY-MM-DD HH:MM:SS`. */
   generated_at: string;
-  /** Reused from Kosha's database (inputs unchanged since it was generated). */
+  /** Served from Kosha's database without calling the model. */
   cached: boolean;
   inputs: {
     fund_signal: FundSignal | null;
@@ -36,6 +36,20 @@ export interface StockAnalysis {
     stale_sections: string[];
     prompt_chars?: number;
   };
+  cache_policy?: { rule: string; timezone: string };
   errors: Array<FundamentalsError & { source?: string }>;
   disclaimer: string;
+}
+
+/** `GET /api/stocks/:id/chat-prompt` — Markdown prompt for a chat session; no model call. */
+export interface ChatPrompt {
+  stock: { id: number; name: string; isin: string | null; symbol: string | null };
+  held: boolean;
+  prompt: string;
+  chars: number;
+  /** Rough size guide (~4 characters per token). */
+  approx_tokens: number;
+  sections: string[];
+  stale_sections: string[];
+  errors: Array<{ section?: string; code?: string | null; message: string; source?: string }>;
 }

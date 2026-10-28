@@ -14,7 +14,8 @@ Kosha ranks stocks by how many actively managed mutual funds hold them (from off
 | | [`GET /stocks/:id`](#get-stocksid) | Everything the scrape stored about one stock (no external calls) |
 | | [`GET /stocks/:id/fundamentals`](#get-stocksidfundamentals) | Fundamentals, fetched on demand (Tapetide), at most once per stock per day |
 | | [`GET /market`](#get-market) | Market-wide FII/DII flows and market pulse, once per day |
-| | [`GET /stocks/:id/analysis`](#get-stocksidanalysis) | AI verdict (BUY/IGNORE or HOLD/SELL), on demand and cached |
+| | [`GET /stocks/:id/analysis`](#get-stocksidanalysis) | AI verdict (BUY/IGNORE or HOLD/SELL), on demand, at most one model call per day |
+| | [`GET /stocks/:id/chat-prompt`](#get-stocksidchat-prompt) | Ready-to-paste prompt that starts a chat session with any LLM (no model call) |
 | | [`GET /stocks/:id/metrics`](#get-stocksidmetrics) | Scraped stock-page metrics (HTML sources only) |
 | Funds & categories | [`GET /funds`](#get-funds) | Tracked funds |
 | | [`GET /categories`](#get-categories) | Categories that have funds in the database |
@@ -208,6 +209,7 @@ There is deliberately no way to force a second provider call on the same day.
       "fetched_at": "2026-10-28 03:40:12",
       "provider": "tapetide",
       "cached": false,
+  "cache_policy": { "rule": "one model call per stock per held flag per calendar day; later days only if the data changed", "timezone": "Asia/Kolkata" },
       "stale": false
     }
   },
@@ -288,14 +290,20 @@ Errors follow the same `{ section, code, message }` shape as `/fundamentals`. `5
 
 ### `GET /stocks/:id/analysis`
 
-AI decision support for one stock. Combines the fund signal with the stock's fundamentals (fetching them on demand if needed) and asks the configured LLM for a verdict. **Lazy and cached:** the model runs only when requested, and the result is reused until its inputs change (new fundamentals, a new scrape, a different model or prompt version).
+AI decision support for one stock. Combines the fund signal with the stock's fundamentals (fetching them on demand if needed) and asks the configured LLM for a verdict. **Lazy and cached:** the model runs only when requested, and the result is stored per stock and per `held` flag.
+
+Cache rule (`cache_policy` in the response):
+- At most **one model call per stock per `held` flag per calendar day** (`fundamentals.timezone`, default IST).
+- On a later day the model runs again **only if the data changed**. The comparison hashes the content (fund signal, fundamentals, market data, model, prompt version) and ignores fetch timestamps, so a daily re-fetch of identical numbers reuses the stored verdict.
+- One same-day exception: if the stored run was missing a data section that is now available (e.g. Tapetide failed in the morning), the model runs again.
+
+There is no force-refresh parameter.
 
 **Query parameters**
 
 | Name | Type | Default | Notes |
 |---|---|---|---|
 | `held` | boolean | `false` | `false`: you don't own it → verdict is `BUY` or `IGNORE`. `true`: you own it → `HOLD` or `SELL`. Cached separately. |
-| `refresh` | boolean | `false` | `true` re-runs the model even if inputs are unchanged |
 
 **Response `200`** (illustrative values)
 
@@ -339,6 +347,7 @@ AI decision support for one stock. Combines the fund signal with the stock's fun
 | `analysis.confidence` | `low` / `medium` / `high`; the model is told to lower it when data is missing or stale |
 | `analysis.*` lists | Short sentences; the model is told to cite only numbers present in the data |
 | `cached` | `true` if the stored analysis was reused |
+| `cache_policy` | The reuse rule above and the timezone that defines a day |
 | `analysis.price_trend` / `ownership_trend` / `analyst_view` | Added in prompt v2: price & technicals, institutional/promoter holding trend, analyst consensus. Absent on analyses stored before v2 |
 | `inputs` | What the model saw: fund signal, which fundamentals and market sections were available, which were stale, and the prompt size |
 
@@ -371,6 +380,42 @@ Real response without an LLM key:
 ```sh
 curl 'http://localhost:5100/api/stocks/419/analysis'
 curl 'http://localhost:5100/api/stocks/419/analysis?held=true'
+```
+
+---
+
+### `GET /stocks/:id/chat-prompt`
+
+Builds a Markdown prompt you paste into any chat LLM (ChatGPT, Claude, Gemini…) to start a session about this stock. It gathers the same data as the analysis (fund signal, fundamentals, market context) using the same once-per-day fundamentals cache, but **never calls the model**, so it works without an LLM key.
+
+The prompt contains: the analyst role and rules (same as the analysis prompt, minus the JSON output contract), your situation (`held`), which sections are stale or missing, every data section with a one-line description and compact JSON, and what to answer first (verdict, then reasoning), then it asks the model to wait for follow-up questions. A typical stock is about 20k characters (~5k tokens).
+
+**Query parameters**
+
+| Name | Type | Default | Notes |
+|---|---|---|---|
+| `held` | boolean | `false` | Frames the question as BUY/IGNORE (`false`) or HOLD/SELL (`true`) |
+| `format` | string | `json` | `text` returns the prompt alone as `text/markdown` |
+
+**Response `200`** (`format=json`, illustrative)
+
+```json
+{
+  "stock": { "id": 419, "name": "KARUR VYSYA BANK LTD.", "isin": "INE036D01028", "symbol": "KARURVYSYA" },
+  "held": false,
+  "prompt": "# Stock decision session: KARUR VYSYA BANK LTD. (NSE: KARURVYSYA, ISIN INE036D01028)\n…",
+  "chars": 21775,
+  "approx_tokens": 5444,
+  "sections": ["fund_signal", "profile", "financials", "shareholding", "pledge", "price_history", "forecasts", "market.fii_dii", "market.pulse"],
+  "stale_sections": [],
+  "errors": []
+}
+```
+
+**Errors:** `404` unknown stock; `503` when the analysis service is not available.
+
+```sh
+curl 'http://localhost:5100/api/stocks/419/chat-prompt?held=true&format=text' > karurvysya-prompt.md
 ```
 
 ---

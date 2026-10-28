@@ -151,8 +151,8 @@ function setup({ llmResponses = [GOOD], fundamentals } = {}) {
   };
 }
 
-test("analysis feeds fund signal + fundamentals to the LLM and caches until inputs change", async () => {
-  const { db, stockId, llm, service, setFundamentals } = setup();
+test("analysis feeds fund signal + fundamentals to the LLM and is stored", async () => {
+  const { db, stockId, llm, service } = setup();
   try {
     const first = await service.analyze(stockId);
     assert.equal(first.analysis.verdict, "BUY");
@@ -172,20 +172,94 @@ test("analysis feeds fund signal + fundamentals to the LLM and caches until inpu
 
     const second = await service.analyze(stockId);
     assert.equal(second.cached, true);
-    assert.equal(llm.calls.length, 1, "unchanged inputs reuse the cached analysis");
+    assert.equal(llm.calls.length, 1, "the stored analysis is reused");
+  } finally {
+    db.close();
+  }
+});
 
+test("the model is called at most once per day; later days only when the data changed", async () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  let clock = Date.now();
+  const { db, stockId, llm, service, setFundamentals } = setup();
+  service.now = () => clock;
+  const profile = (pe, fetchedAt) => ({
+    stock: { id: stockId, symbol: "KARURVYSYA" },
+    fund_signal: { funds_holding: 1, rank: 1, categories: [] },
+    fundamentals: { profile: { data: { pe }, fetched_at: fetchedAt, cached: false, stale: false } },
+    errors: []
+  });
+  try {
+    setFundamentals(profile(9.8, "2026-10-28 04:00:00"));
+    await service.analyze(stockId);
+    assert.equal(llm.calls.length, 1);
+
+    // Same day, the numbers change: still the stored answer (once per day).
+    setFundamentals(profile(11, "2026-10-28 09:00:00"));
+    assert.equal((await service.analyze(stockId)).cached, true);
+    assert.equal(llm.calls.length, 1);
+
+    // Next day, same numbers re-fetched (only the timestamp differs): no call.
+    clock += DAY;
+    setFundamentals(profile(9.8, "2026-10-29 04:00:00"));
+    db.prepare("UPDATE stock_analyses SET created_at = datetime(created_at, '-1 day')").run();
+    assert.equal((await service.analyze(stockId)).cached, true);
+    assert.equal(llm.calls.length, 1, "unchanged content is not re-analysed");
+
+    // Next day with different numbers: one new call.
+    setFundamentals(profile(12.5, "2026-10-29 05:00:00"));
+    assert.equal((await service.analyze(stockId)).cached, false);
+    assert.equal(llm.calls.length, 2);
+  } finally {
+    db.close();
+  }
+});
+
+test("a same-day analysis made while data was missing is redone once the data arrives", async () => {
+  const { db, stockId, llm, service, setFundamentals } = setup();
+  try {
+    setFundamentals({
+      stock: { id: stockId, symbol: null },
+      fund_signal: { funds_holding: 1, rank: 1, categories: [] },
+      fundamentals: {},
+      errors: [{ section: "profile", code: "rate_limited", message: "quota" }]
+    });
+    await service.analyze(stockId);
     setFundamentals({
       stock: { id: stockId, symbol: "KARURVYSYA" },
-      fund_signal: first.inputs.fund_signal,
-      fundamentals: { profile: { data: { pe: 11 }, fetched_at: "2026-10-28 10:00:00", cached: false, stale: false } },
+      fund_signal: { funds_holding: 1, rank: 1, categories: [] },
+      fundamentals: { profile: { data: { pe: 9.8 }, fetched_at: "2026-10-28 10:00:00", cached: false, stale: false } },
       errors: []
     });
-    const third = await service.analyze(stockId);
-    assert.equal(third.cached, false);
-    assert.equal(llm.calls.length, 2, "new fundamentals trigger a fresh analysis");
+    const redone = await service.analyze(stockId);
+    assert.equal(redone.cached, false);
+    assert.equal(llm.calls.length, 2);
+    assert.equal((await service.analyze(stockId)).cached, true);
+    assert.equal(llm.calls.length, 2);
+  } finally {
+    db.close();
+  }
+});
 
-    await service.analyze(stockId, { refresh: true });
-    assert.equal(llm.calls.length, 3, "refresh forces the model");
+test("chat prompt contains role, situation, every data section and the opening ask, without calling the model", async () => {
+  const { db, stockId, llm, service } = setup();
+  try {
+    const result = await service.chatPrompt(stockId, { held: true });
+    const text = result.prompt;
+    assert.equal(llm.calls.length, 0);
+    assert.match(text, /^# Stock decision session: Karur Vysya Bank Ltd\. \(NSE: KARURVYSYA, ISIN INE036D01028\)/);
+    assert.match(text, /## Your role and rules/);
+    assert.match(text, /I ALREADY HOLD this stock/);
+    assert.match(text, /### Fund signal[\s\S]*"funds_holding": 1/);
+    assert.match(text, /### Company profile[\s\S]*"pe": 9\.8/);
+    assert.match(text, /could not be refreshed today[^\n]*pledge/);
+    assert.match(text, /Not available for this session: Financial statements/);
+    assert.match(text, /Start with your verdict \(HOLD or SELL\)/);
+    assert.match(text, /wait for my follow-up questions/);
+    assert.equal(result.chars, text.length);
+    assert.ok(result.approx_tokens > 0);
+    assert.deepEqual(result.sections, ["profile", "pledge"]);
+    assert.equal(await service.chatPrompt(99999), null);
   } finally {
     db.close();
   }
@@ -257,9 +331,17 @@ test("GET /api/stocks/:id/analysis returns the verdict and maps errors to status
     assert.equal((await fetch(`${base}/api/stocks/999/analysis`)).status, 404);
 
     service.llm = fakeLlm([Object.assign(new Error("no key"), { code: "not_configured" })]);
-    const unconfigured = await fetch(`${base}/api/stocks/${stockId}/analysis?refresh=true`);
+    const unconfigured = await fetch(`${base}/api/stocks/${stockId}/analysis?held=true`);
     assert.equal(unconfigured.status, 503);
     assert.equal((await unconfigured.json()).code, "not_configured");
+
+    const prompt = await fetch(`${base}/api/stocks/${stockId}/chat-prompt`);
+    assert.equal(prompt.status, 200);
+    assert.match((await prompt.json()).prompt, /BUY or IGNORE/);
+    const text = await fetch(`${base}/api/stocks/${stockId}/chat-prompt?format=text&held=true`);
+    assert.match(text.headers.get("content-type"), /text\/markdown/);
+    assert.match(await text.text(), /^# Stock decision session/);
+    assert.equal((await fetch(`${base}/api/stocks/999/chat-prompt`)).status, 404);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     db.close();

@@ -21,6 +21,7 @@ import {
 import { ColumnChart, ColumnSeries } from '../../shared/charts/column-chart';
 import { LineChart, LineSeries } from '../../shared/charts/line-chart';
 import { DataView } from '../../shared/data-view/data-view';
+import { ChatPromptPanel } from './chat-prompt-panel/chat-prompt-panel';
 
 /** Display order and labels for fundamentals sections (unknown ones go last). */
 export const FUNDAMENTALS_SECTIONS: ReadonlyArray<{ key: string; title: string; hint: string }> = [
@@ -57,7 +58,7 @@ const HOLDER_SLOTS: ReadonlyArray<{ row: string; name: string; slot: 1 | 2 | 3 |
  */
 @Component({
   selector: 'app-stock-detail',
-  imports: [RouterLink, DataView, LineChart, ColumnChart],
+  imports: [RouterLink, DataView, LineChart, ColumnChart, ChatPromptPanel],
   templateUrl: './stock-detail.html',
   styleUrl: './stock-detail.scss',
 })
@@ -295,17 +296,17 @@ export class StockDetail {
 
   /**
    * Ask the backend's LLM for a verdict. The backend fetches fundamentals if
-   * needed (same once-per-day rule) and reuses a stored analysis while its
-   * inputs are unchanged; `refresh` forces the model to run again.
+   * needed and stores the answer: the model runs at most once per stock per
+   * day, and on later days only when the data changed.
    */
-  protected runAnalysis(refresh = false): void {
+  protected runAnalysis(): void {
     const id = this.numericId();
     if (id === null || this.analysisState() === 'loading') {
       return;
     }
     this.analysisState.set('loading');
     this.analysisError.set(null);
-    this.api.getAnalysis(id, { held: this.held(), refresh }).subscribe({
+    this.api.getAnalysis(id, { held: this.held() }).subscribe({
       next: (result) => {
         this.analysis.set(result);
         this.analysisState.set('success');
