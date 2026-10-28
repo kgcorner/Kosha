@@ -28,7 +28,7 @@ When a stock's score or weight changes, its `last_analyzed_at` is reset so AI re
 The leaderboard can also be **scoped to one fund category** (`GET /api/stocks/leaderboard?category=Small%20Cap`): consensus and rank are recomputed from that category's funds only, so the response answers "which stock is #1 among Small Cap funds" — not just the global ranking. Each row also carries `categories`, the list of every category holding the stock.
 
 ### 1.4 AI Enrichment (optional, disabled by default)
-When `ai.enabled` is `true` in `config/app.json`, the top `ai.top_stock_limit` (default 20) un-analyzed stocks are sent to a local LLM endpoint (Ollama-compatible) with a structured prompt. Alongside fund-membership data (consensus score, per-fund allocation weight with its range), the prompt includes the **scraped stock-page fundamentals** (price, valuation ratios, financial trends, shareholding …) so the model reasons over the real business, not just who holds it. The response is validated to contain `thesis` (string), `pros` (array), and `cons` (array) and persisted into `stock_aggregations`. A failed/invalid LLM response aborts the scrape job (recorded as `failed`), so junk never lands in the leaderboard.
+When `ai.scrape_thesis.enabled` is `true` in `config/app.json`, the top `ai.scrape_thesis.top_stock_limit` (default 20) un-analyzed stocks are sent to the configured OpenAI-compatible LLM (`ai.base_url`/`ai.model`) with a structured prompt. For per-stock, on-demand decisions use `GET /api/stocks/:id/analysis` instead (see API.md). Alongside fund-membership data (consensus score, per-fund allocation weight with its range), the prompt includes the **scraped stock-page fundamentals** (price, valuation ratios, financial trends, shareholding …) so the model reasons over the real business, not just who holds it. The response is validated to contain `thesis` (string), `pros` (array), and `cons` (array) and persisted into `stock_aggregations`. A failed/invalid LLM response aborts the scrape job (recorded as `failed`), so junk never lands in the leaderboard.
 
 ### 1.5 Category Change Detection (Sell Signals)
 After aggregation, the job compares each category's **current** stock set (distinct stocks held by funds in that category) against the stored baseline in `category_stocks`:
@@ -48,7 +48,7 @@ A scrape drives a headless browser across many pages and takes minutes, so trigg
 The same pipeline runs automatically on the `scrape_cron` cron expression (default `0 6 * * *` — daily at 06:00). Invalid cron expressions fail fast at startup.
 
 ### 1.8 Pluggable Source Adapters
-The scraper is source-agnostic. A source implements `supports(url)` plus `discoverFunds(page)` and `scrapeFundHoldings(page, fund)`, and is registered in `src/scrapers/sourceRegistry.js`. `groww` and `moneycontrol` are registered; `config/scraping.json` picks one via `source`, and the registry resolves the adapter per category URL. XPath reads are **bounded and tolerant**: a short per-read timeout and try/catch so an element that detaches mid-read (a common race on Groww's client-rendered SPA) resolves to `null`/skipped instead of crashing the job.
+The scraper is source-agnostic. A source implements `supports(url)` plus `discoverFunds(page)` and `scrapeFundHoldings(page, fund)`, and is registered in `src/scrapers/sourceRegistry.js`. `fund-disclosures`, `mfdata`, `groww` and `moneycontrol` are registered; `config/scraping.json` picks one (default `fund-disclosures`; Groww and MFData.in configs kept in `config/scraping.groww.json` and `config/scraping.mfdata.json`) via `source`, and the registry resolves the adapter per category URL. XPath reads are **bounded and tolerant**: a short per-read timeout and try/catch so an element that detaches mid-read (a common race on Groww's client-rendered SPA) resolves to `null`/skipped instead of crashing the job.
 
 ---
 
@@ -70,6 +70,8 @@ Resolution is **layered and self-describing** — for each metric the extractor 
 ---
 
 ## 2. REST API
+
+> The complete, current endpoint reference — including `/stocks/:id/fundamentals` and `/stocks/:id/analysis` — is [`API.md`](API.md). This section covers the original scrape and ranking endpoints.
 
 Every response is JSON. Errors use `{ "error": "<message>" }` with status `400` (bad pagination params), `404` (unknown job id), `409` (scrape already running), or `500` (unexpected).
 
@@ -396,10 +398,12 @@ Environment variables override `config/*.json`: `APP_CONFIG`, `SCRAPING_CONFIG`,
 | `port` | `3300` | API listen port. |
 | `database_path` | `./data/stocks.sqlite` | SQLite file (auto-created). |
 | `scrape_cron` | `0 6 * * *` | Scheduled scrape (node-cron expression); empty disables. |
-| `ai.enabled` | `false` | Enable local-LLM enrichment. |
-| `ai.baseUrl` | `http://127.0.0.1:1234` | Ollama-compatible endpoint. |
-| `ai.model` | `ornith-1.5-9b` | Model name sent to the LLM. |
-| `ai.top_stock_limit` | `20` | Max un-analyzed stocks enriched per run. |
+| `ai.base_url` | `https://openrouter.ai/api/v1` | OpenAI-compatible endpoint (LM Studio: `http://127.0.0.1:1234/v1`, Ollama: `http://127.0.0.1:11434/v1`). |
+| `ai.api_key_env` | `OPENROUTER_API_KEY` | Env var holding the API key; omit for local servers. |
+| `ai.model` | `google/gemini-2.5-flash` | Model id sent to the endpoint. |
+| `ai.temperature` / `ai.max_output_tokens` / `ai.timeout_ms` | `0.2` / `4096` / `120000` | Generation settings. |
+| `ai.scrape_thesis.enabled` | `false` | Also generate a short thesis for top stocks during each scrape. |
+| `ai.scrape_thesis.top_stock_limit` | `20` | Max un-analyzed stocks given a thesis per run. |
 | scraping `source` | `groww` | Registered adapter to use (`groww` or `moneycontrol`). |
 | scraping `categories[]` | 7 Groww categories | `{ category, url, xpath? }`; `xpath` falls back to `selectors.mf_list_page.fund_row`. |
 | scraping `browser.headless` | `true` | Run Playwright headless. |

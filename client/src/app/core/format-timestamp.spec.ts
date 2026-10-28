@@ -16,15 +16,15 @@ describe('formatTimestamp', () => {
     expect(formatted).toContain('2026');
   });
 
-  it('treats the timestamp as local time', () => {
+  it('treats the timestamp as UTC (SQLite CURRENT_TIMESTAMP)', () => {
     const parsed = parseBackendTimestamp('2026-10-15 06:12:44');
     expect(parsed).not.toBeNull();
-    expect(parsed?.getFullYear()).toBe(2026);
-    expect(parsed?.getMonth()).toBe(9);
-    expect(parsed?.getDate()).toBe(15);
-    expect(parsed?.getHours()).toBe(6);
-    expect(parsed?.getMinutes()).toBe(12);
-    expect(parsed?.getSeconds()).toBe(44);
+    expect(parsed?.getUTCFullYear()).toBe(2026);
+    expect(parsed?.getUTCMonth()).toBe(9);
+    expect(parsed?.getUTCDate()).toBe(15);
+    expect(parsed?.getUTCHours()).toBe(6);
+    expect(parsed?.getUTCMinutes()).toBe(12);
+    expect(parsed?.getUTCSeconds()).toBe(44);
   });
 
   it('accepts an ISO-style T separator', () => {

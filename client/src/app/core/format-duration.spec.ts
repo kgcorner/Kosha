@@ -32,12 +32,12 @@ describe('formatElapsedSince', () => {
   });
 
   it('computes the elapsed span between two timestamps', () => {
-    const to = new Date(2026, 9, 15, 6, 2, 5);
+    const to = new Date(Date.UTC(2026, 9, 15, 6, 2, 5));
     expect(formatElapsedSince('2026-10-15 06:00:00', to)).toBe('2m 05s');
   });
 
   it('never returns a negative duration when the end is before the start', () => {
-    const to = new Date(2026, 9, 15, 5, 0, 0);
+    const to = new Date(Date.UTC(2026, 9, 15, 5, 0, 0));
     expect(formatElapsedSince('2026-10-15 06:00:00', to)).toBe('0s');
   });
 });

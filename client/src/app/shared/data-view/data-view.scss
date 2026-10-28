@@ -1,0 +1,91 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.dv-object {
+  margin: 0;
+  display: grid;
+  gap: 0.15rem;
+
+  &--nested {
+    padding-left: 0.75rem;
+    border-left: 2px solid var(--border);
+  }
+}
+
+.dv-row {
+  display: grid;
+  grid-template-columns: minmax(8rem, 14rem) minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px dashed var(--border);
+
+  &--block {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+
+  dt {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+
+  dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.dv-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.dv-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+
+  th,
+  td {
+    padding: 0.35rem 0.6rem;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  th {
+    background: var(--surface-muted);
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+
+  td.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+}
+
+.dv-more {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+}
+
+.dv-json {
+  display: block;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+}
+
+.dv-sep {
+  color: var(--text-muted);
+}

@@ -1,4 +1,4 @@
-import { withBrowser } from "../scrapers/browser.js";
+import { withBrowser, withPageIfNeeded } from "../scrapers/browser.js";
 import { normalizeCategories } from "../scrapers/categoryList.js";
 
 export const DRY_RUN_DEFAULT_LIMIT = 5;
@@ -40,7 +40,7 @@ export class ScrapeDryRunService {
       category_xpath: selected.xpath
     };
 
-    return this.withBrowser(this.configuration, async (page) => {
+    return withPageIfNeeded(adapter.requiresBrowser !== false, this.configuration, async (page) => {
       const funds = await adapter.discoverFunds(page, categoryConfiguration);
       const fundIndex = selectFundIndex(funds, fund);
       if (fundIndex === -1) {
@@ -62,7 +62,7 @@ export class ScrapeDryRunService {
         categoryConfiguration
       );
       const listed = holdings.slice(0, maxHoldings);
-      const diagnostics = buildDiagnostics(holdings, maxHoldings);
+      const diagnostics = buildDiagnostics(holdings, maxHoldings, adapter.requiresBrowser !== false);
 
       // Follow each listed holding to its own stock detail page so the dry run
       // surfaces the full metric set (price, ratios, financials, shareholding,
@@ -99,7 +99,7 @@ export class ScrapeDryRunService {
         holdings: listed,
         diagnostics
       };
-    });
+    }, this.withBrowser);
   }
 }
 
@@ -141,7 +141,7 @@ function clampLimit(limit) {
   return Math.min(Math.trunc(value), DRY_RUN_MAX_LIMIT);
 }
 
-function buildDiagnostics(holdings, maxHoldings) {
+function buildDiagnostics(holdings, maxHoldings, expectsStockPages = true) {
   const diagnostics = [];
   if (holdings.length === 0) {
     diagnostics.push(
@@ -158,7 +158,8 @@ function buildDiagnostics(holdings, maxHoldings) {
       `${missingWeights} holding(s) have no parsable weight — check selectors.mf_detail_page.stock_weight.`
     );
   }
-  const missingUrls = holdings.filter((holding) => !holding.url).length;
+  // API/data-file sources have no per-stock pages; a missing URL is expected.
+  const missingUrls = expectsStockPages ? holdings.filter((holding) => !holding.url).length : 0;
   if (missingUrls > 0) {
     diagnostics.push(
       `${missingUrls} holding(s) have no stock detail URL — check selectors.mf_detail_page.stock_url, so their metrics cannot be fetched.`

@@ -67,16 +67,16 @@ Aligned with the existing `kosha/` workspace — **use only what is already inst
 
 ## 3. Backend Integration Contract
 
-**Base URL:** `http://localhost:3300` (backend default port; see `config/app.json`). Every response is JSON; every error is `{ "error": "<message>" }`.
+**Base URL:** `http://localhost:5100` (backend default port; see `config/app.json`). Every response is JSON; every error is `{ "error": "<message>" }`.
 
 ### 3.1 CORS / Dev Proxy — REQUIRED SETUP
 
 The backend (`backend/src/app.js`) currently registers **no CORS middleware**. Therefore the client MUST NOT rely on cross-origin browser requests. Two acceptable options, in order of preference:
 
-1. **Add an Angular dev-server proxy** (`kosha/proxy.conf.json`) mapping `/api` → `http://localhost:3300`, and run `ng serve --proxy-config proxy.conf.json` (add `serve.options.proxyConfig` in `angular.json`). The client then calls **relative** URLs (`/api/...`), which also works behind a reverse proxy in production.
+1. **Add an Angular dev-server proxy** (`kosha/proxy.conf.json`) mapping `/api` → `http://localhost:5100`, and run `ng serve --proxy-config proxy.conf.json` (add `serve.options.proxyConfig` in `angular.json`). The client then calls **relative** URLs (`/api/...`), which also works behind a reverse proxy in production.
 2. If a proxy is not used, the backend must add CORS middleware. **This is a backend change, out of scope for the client ticket** — raise it separately.
 
-**Requirement:** `ApiService` MUST use a configurable relative base path (`/api`). Do not hard-code `http://localhost:3300` into components.
+**Requirement:** `ApiService` MUST use a configurable relative base path (`/api`). Do not hard-code `http://localhost:5100` into components.
 
 ### 3.2 Endpoint: `GET /api/stocks/leaderboard`
 
@@ -256,11 +256,11 @@ export interface CategoryChanges {
 
 ### 4.1 Backend Timestamp Handling — REQUIRED
 
-Backend timestamps are `"YYYY-MM-DD HH:MM:SS"` **without** a timezone and are **not ISO 8601**. `new Date('2026-10-15 06:12:44')` is implementation-dependent and may parse as `Invalid Date` in Safari.
+Backend timestamps are `"YYYY-MM-DD HH:MM:SS"` in **UTC** **without** a timezone marker and are **not ISO 8601**. `new Date('2026-10-15 06:12:44')` is implementation-dependent and may parse as `Invalid Date` in Safari.
 
 **Requirement:** provide a `formatTimestamp(value: string | null): string` utility that:
 1. Returns `'—'` for `null`/empty.
-2. Parses the string by replacing the space with `'T'` (`value.replace(' ', 'T')`) and, because no zone is given, treats it as **local time** (construct a `Date` from parts).
+2. Parses the string from its parts as **UTC**: the backend writes SQLite `CURRENT_TIMESTAMP`, which is UTC without a zone marker. Display converts to the viewer's local time (e.g. IST).
 3. Renders via Angular `DatePipe` or `Intl.DateTimeFormat`; on parse failure returns the raw string rather than throwing.
 
 ---
@@ -272,7 +272,8 @@ Routes (`app.routes.ts`), all under the app shell. Lazy-load feature components 
 | Path | Component | Purpose |
 |---|---|---|
 | `''` | redirect → `/leaderboard` | Default landing. |
-| `leaderboard` | `Leaderboard` | Ranked consensus list + AI thesis/pros/cons (§6.1). |
+| `leaderboard` | `Leaderboard` | Ranked consensus list + AI thesis/pros/cons (§6.1). Stock names link to `/stock/:stockId`. |
+| `stock/:stockId` | `StockDetail` | One stock: stored scrape data + on-demand fundamentals (§6.5). |
 | `signals` | `SellSignals` | Per-category removed/added changes (§6.2). |
 | `funds` | `Funds` | Tracked funds table (§6.3). |
 | `jobs` | `Jobs` | Scrape trigger + job monitor/history (§6.4). |
@@ -372,6 +373,15 @@ Model each feature with a small state machine: **`idle → loading → success |
 - Terminal-style log of stage transitions observed client-side.
 
 ---
+
+### 6.5 Stock Detail (`/stock/:stockId`)
+
+Opened by clicking a stock name on the leaderboard. Loads **only stored data** first; fundamentals are fetched only when the user asks.
+
+- **On load:** `GET /api/stocks/:id` (no external calls). Shows name, NSE symbol (once known), ISIN, sector; summary stats (funds holding, overall rank, per-fund weight avg and range, ₹ Cr held by funds, shares held, disclosure date); per-category coverage (`funds holding / funds in category` with a bar); recent category added/removed events; and every holding fund with weight (% NAV), shares, value (₹ Cr) and as-of date.
+- **Fetch fundamentals button:** `GET /api/stocks/:id/fundamentals`. The backend calls its provider at most once per stock per day and serves its stored copy otherwise, so the button is safe to press repeatedly ("Fetch again"). Each section (profile, financials, shareholding, pledge) shows "Fresh" or "Stored" plus its fetch time, a "Stale" badge when the provider failed and an older copy was returned, and any per-section provider errors.
+- **Rendering provider data:** the payload shape belongs to the provider, so it is rendered generically by `shared/data-view` (objects as label/value rows, arrays of records as tables, nested values recursively).
+- **States:** loading skeleton; error with retry (404 / network); invalid id handled without an API call.
 
 ## 7. Services & State Management
 

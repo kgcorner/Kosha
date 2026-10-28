@@ -2,7 +2,7 @@ import { Router } from "express";
 import { serializeJob } from "../services/scrapeJob.js";
 import { DRY_RUN_DEFAULT_LIMIT, DRY_RUN_MAX_LIMIT } from "../services/scrapeDryRun.js";
 
-export function createApiRouter({ repositories, scrapeJob, dryRunService }) {
+export function createApiRouter({ repositories, scrapeJob, dryRunService, fundamentalsService = null, analysisService = null }) {
   const router = Router();
 
   router.get("/stocks/leaderboard", (request, response, next) => {
@@ -11,6 +11,22 @@ export function createApiRouter({ repositories, scrapeJob, dryRunService }) {
       const offset = parseInteger(request.query.offset, 0, 0, 1000000);
       const category = parseCategory(request.query.category);
       response.json(repositories.aggregation.leaderboard(limit, offset, category));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Everything the scrape stored about one stock (no external calls): ranking,
+  // per-category coverage, every holding fund with weight/quantity/value,
+  // recent category changes, and when fundamentals were last fetched.
+  router.get("/stocks/:id", (request, response, next) => {
+    try {
+      const id = Number(request.params.id);
+      const detail = Number.isInteger(id) ? repositories.stocks.detail(id) : null;
+      if (!detail) {
+        return response.status(404).json({ error: `Stock #${request.params.id} not found` });
+      }
+      response.json({ ...detail, fund_signal: repositories.aggregation.signalFor(id) });
     } catch (error) {
       next(error);
     }
@@ -36,6 +52,65 @@ export function createApiRouter({ repositories, scrapeJob, dryRunService }) {
         page_title: metrics?.page_title ?? null,
         updated_at: metrics?.updated_at ?? null
       });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Lazily loaded fundamentals (quote/valuation, financial statements,
+  // shareholding, promoter pledge) plus Kosha's fund-consensus signal, for the
+  // UI detail view and LLM analysis. Calls the provider only for missing or
+  // expired sections; everything is cached per section in SQLite.
+  //   ?sections=profile,pledge  fetch a subset
+  // The provider is called at most once per stock per section per day.
+  router.get("/stocks/:id/fundamentals", (request, response, next) => {
+    try {
+      if (!fundamentalsService) {
+        return response.status(503).json({ error: "Fundamentals provider is not configured" });
+      }
+      const id = Number(request.params.id);
+      if (!Number.isInteger(id)) {
+        return response.status(404).json({ error: `Stock #${request.params.id} not found` });
+      }
+      const sections = typeof request.query.sections === "string" && request.query.sections.trim()
+        ? request.query.sections.split(",").map((value) => value.trim()).filter(Boolean)
+        : null;
+      fundamentalsService
+        .getFundamentals(id, { sections })
+        .then((result) => {
+          if (!result) return response.status(404).json({ error: `Stock #${request.params.id} not found` });
+          response.json(result);
+        })
+        .catch(next);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // On-demand LLM verdict for one stock from Kosha's fund signal + fundamentals.
+  //   ?held=true     the user owns it → HOLD/SELL (default BUY/IGNORE)
+  //   ?refresh=true  re-run the model even if inputs are unchanged
+  // Cached per (stock, held) until the inputs change.
+  router.get("/stocks/:id/analysis", (request, response, next) => {
+    try {
+      if (!analysisService) {
+        return response.status(503).json({ error: "LLM analysis is not configured" });
+      }
+      const id = Number(request.params.id);
+      if (!Number.isInteger(id)) {
+        return response.status(404).json({ error: `Stock #${request.params.id} not found` });
+      }
+      const flag = (value) => ["1", "true", "yes"].includes(String(value ?? "").toLowerCase());
+      analysisService
+        .analyze(id, { held: flag(request.query.held), refresh: flag(request.query.refresh) })
+        .then((result) => {
+          if (!result) return response.status(404).json({ error: `Stock #${request.params.id} not found` });
+          response.json(result);
+        })
+        .catch((error) => {
+          const status = error.code === "not_configured" ? 503 : error.code === "rate_limited" ? 429 : 502;
+          response.status(status).json({ error: error.message, code: error.code ?? null });
+        });
     } catch (error) {
       next(error);
     }

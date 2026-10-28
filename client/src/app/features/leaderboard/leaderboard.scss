@@ -198,3 +198,15 @@
     color: var(--text-strong);
   }
 }
+
+.stock-name-link {
+  color: var(--text-strong);
+  font-weight: 600;
+  text-decoration: none;
+
+  &:hover,
+  &:focus-visible {
+    color: var(--accent);
+    text-decoration: underline;
+  }
+}

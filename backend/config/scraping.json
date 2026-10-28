@@ -1,103 +1,25 @@
 {
-  "source": "groww",
-  "homepage_url": "https://groww.in/",
+  "source": "fund-disclosures",
+  "homepage_url": "https://cdn.jsdelivr.net/gh/kushagra-agarwal-a/fund-holdings-data/",
   "categories": [
-    { "category": "Mid Cap", "url": "https://groww.in/mutual-funds/filter?sub_cat=%5B%22Mid+Cap%22%5D", "xpath": "//a[contains(@class, 'tableCells_srLink__PZHGP')]" },
-    { "category": "Large Cap", "url": "https://groww.in/mutual-funds/filter?sub_cat=%5B%22Large+Cap%22%5D", "xpath": "//a[contains(@class, 'tableCells_srLink__PZHGP')]" },
-    { "category": "Small Cap", "url": "https://groww.in/mutual-funds/filter?sub_cat=%5B%22Small+Cap%22%5D", "xpath": "//a[contains(@class, 'tableCells_srLink__PZHGP')]" },
-    { "category": "ELSS", "url": "https://groww.in/mutual-funds/filter?sub_cat=%5B%22ELSS%22%5D", "xpath": "//a[contains(@class, 'tableCells_srLink__PZHGP')]" },
-    { "category": "Thematic", "url": "https://groww.in/mutual-funds/filter?sub_cat=%5B%22Thematic%22%5D", "xpath": "//a[contains(@class, 'tableCells_srLink__PZHGP')]" },
-    { "category": "Value Oriented", "url": "https://groww.in/mutual-funds/filter?sub_cat=%5B%22Value+Oriented%22%5D", "xpath": "//a[contains(@class, 'tableCells_srLink__PZHGP')]" },
-    { "category": "Flexi Cap", "url": "https://groww.in/mutual-funds/filter?sub_cat=%5B%22Flexi+Cap%22%5D", "xpath": "//a[contains(@class, 'tableCells_srLink__PZHGP')]" }
+    { "category": "Large Cap", "url": "https://cdn.jsdelivr.net/gh/kushagra-agarwal-a/fund-holdings-data/catalog?sub=Large%20Cap%20Fund" },
+    { "category": "Mid Cap", "url": "https://cdn.jsdelivr.net/gh/kushagra-agarwal-a/fund-holdings-data/catalog?sub=Mid%20Cap%20Fund" },
+    { "category": "Small Cap", "url": "https://cdn.jsdelivr.net/gh/kushagra-agarwal-a/fund-holdings-data/catalog?sub=Small%20Cap%20Fund" },
+    { "category": "ELSS", "url": "https://cdn.jsdelivr.net/gh/kushagra-agarwal-a/fund-holdings-data/catalog?sub=ELSS&sub=ELSS-%20Tax%20Saver%20Fund" },
+    { "category": "Thematic", "url": "https://cdn.jsdelivr.net/gh/kushagra-agarwal-a/fund-holdings-data/catalog?sub=Sectoral%2F%20Thematic&sub=Thematic%20Fund&sub=Sectoral%20Fund" },
+    { "category": "Value Oriented", "url": "https://cdn.jsdelivr.net/gh/kushagra-agarwal-a/fund-holdings-data/catalog?sub=Value%20Fund&sub=Contra%20Fund" },
+    { "category": "Flexi Cap", "url": "https://cdn.jsdelivr.net/gh/kushagra-agarwal-a/fund-holdings-data/catalog?sub=Flexi%20Cap%20Fund" }
   ],
-  "selectors": {
-    "mf_list_page": {
-      "fund_row": "//a[contains(@class, 'tableCells_srLink__PZHGP')]"
-    },
-    "mf_detail_page": {
-      "view_all_holdings_button": "",
-      "holding_row": "//td[contains(@class, 'holdings_companyName')]/ancestor::tr",
-      "stock_name": ".//td[contains(@class, 'holdings_companyName')]",
-      "stock_sector": "./td[2]",
-      "stock_instrument": "./td[3]",
-      "stock_weight": "./td[4]",
-      "stock_url": ".//td[contains(@class, 'holdings_companyName')]//a/@href"
-    },
-    "stock_page": {
-      "wait_ms": 2500,
-      "payload_root": "props.pageProps.stockData",
-      "metrics": {
-        "core_identifiers_and_market_metrics": {
-          "ticker_and_exchange": "//h1[contains(@class, 'head')] | //div[contains(@class, 'stockTitle')]//h1",
-          "live_price": "//div[contains(@class, 'liveprice')]//span | //span[contains(@class, 'usl18Price')]",
-          "intraday_high_low": "//tr[td[contains(text(), 'Day High/Low')]]/td[2] | //div[contains(text(), 'Day High/Low')]/following-sibling::div",
-          "fifty_two_week_high_low": "//tr[td[contains(text(), '52 W High/Low')]]/td[2] | //div[contains(text(), '52W High/Low')]/following-sibling::div",
-          "market_cap": "//tr[td[contains(text(), 'Market Cap')]]/td[2] | //div[contains(text(), 'Market Cap')]/following-sibling::div"
-        },
-        "valuation_and_fundamental_ratios": {
-          "pe_ratio": "//tr[td[contains(text(), 'PE Ratio')]]/td[2]",
-          "industry_pe": "//tr[td[contains(text(), 'Sector PE')]]/td[2] | //tr[td[contains(text(), 'Industry PE')]]/td[2]",
-          "eps_ttm": "//tr[td[contains(text(), 'EPS (TTM)')]]/td[2]",
-          "pb_ratio": "//tr[td[contains(text(), 'PB Ratio')]]/td[2]",
-          "book_value": "//tr[td[contains(text(), 'Book Value')]]/td[2]",
-          "roe": "//tr[td[contains(text(), 'ROE')]]/td[2]",
-          "dividend_yield": "//tr[td[contains(text(), 'Dividend Yield')]]/td[2]"
-        },
-        "financial_performance_trends": {
-          "revenue_history": "//div[contains(@id, 'financials')]//table//tr[position()>1]",
-          "profit_history": "//div[contains(@id, 'financials')]//table//tr[contains(., 'Net Profit')]",
-          "growth_metrics": "//div[contains(@class, 'financial-growth')]//tr"
-        },
-        "shareholding_pattern": {
-          "institutional_vs_public": "//div[contains(@id, 'holding')]//table//tr",
-          "trend_shifts": "//div[contains(@class, 'holding-trend')]//span"
-        },
-        "corporate_actions_and_events": {
-          "earnings_calendar": "//div[contains(@class, 'corporate-actions')]//table//tr",
-          "dividends_and_splits": "//div[contains(@class, 'dividend')]//li"
-        },
-        "recent_news_and_regulatory_filings": {
-          "material_disclosures": "//div[contains(@class, 'news-list')]//a",
-          "regulatory_filings": "//div[contains(@id, 'filings')]//tr"
-        },
-        "peer_comparison_benchmarks": {
-          "competitor_metrics": "//div[contains(@id, 'peer')]//table//tr"
-        }
-      },
-      "hints": {
-        "live_price": {
-          "xpaths": ["//span[contains(@class, 'tickerUi_livePrice')]"]
-        },
-        "market_cap": { "labels": ["Market Cap"], "payload": "fundamentals[Market Cap].value" },
-        "pe_ratio": { "labels": ["P/E Ratio", "PE Ratio", "P/E Ratio(TTM)"], "payload": "fundamentals[P/E Ratio(TTM)].value" },
-        "industry_pe": { "labels": ["Industry P/E", "Sector PE", "Industry PE"], "payload": "fundamentals[Industry P/E].value" },
-        "eps_ttm": { "labels": ["EPS", "EPS(TTM)", "EPS (TTM)"], "payload": "fundamentals[EPS(TTM)].value" },
-        "pb_ratio": { "labels": ["P/B Ratio", "PB Ratio"], "payload": "fundamentals[P/B Ratio].value" },
-        "book_value": { "labels": ["Book Value"], "payload": "fundamentals[Book Value].value" },
-        "roe": { "labels": ["ROE"], "payload": "fundamentals[ROE].value" },
-        "dividend_yield": { "labels": ["Dividend Yield", "Div Yield"], "payload": "fundamentals[Dividend Yield].value" },
-        "fifty_two_week_high_low": {
-          "labels": ["52 week low", "52 week high", "52 W High/Low", "52W High/Low"],
-          "payload": {
-            "low": "priceData.nse.yearLowPrice",
-            "high": "priceData.nse.yearHighPrice"
-          }
-        },
-        "revenue_history": { "payload": "financialStatement[Revenue].yearly" },
-        "profit_history": { "payload": "financialStatement[Profit].yearly" },
-        "growth_metrics": { "payload": "financialStatement[Revenue].cagr" },
-        "institutional_vs_public": { "payload": "shareholdingPatternV2.data" },
-        "trend_shifts": { "payload": "shareholdingPatternV2.data" },
-        "competitor_metrics": { "payload": "similarAssets.peerList" }
-      },
-      "payload": {
-        "details": "details",
-        "financials": "financialStatement",
-        "shareholding": "shareholdingPatternV2.data",
-        "peers": "similarAssets.peerList",
-        "price_range": "priceData"
-      }
-    }
+  "selectors": {},
+  "fund_disclosures": {
+    "meta_url": "https://raw.githubusercontent.com/kushagra-agarwal-a/fund-holdings-data/main/meta.json",
+    "exclude_name_pattern": "\\b(index|etf|nifty|sensex|fund of funds?|fof)\\b",
+    "as_of": null,
+    "include_debt": false,
+    "timeout_ms": 60000,
+    "request_delay_ms": 50,
+    "max_retries": 3,
+    "retry_backoff_ms": 2000
   },
   "browser": {
     "headless": true,

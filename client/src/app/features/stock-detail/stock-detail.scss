@@ -1,0 +1,313 @@
+:host {
+  display: block;
+}
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 0.75rem;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.9rem;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.stock-header {
+  margin-bottom: 1rem;
+
+  &__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.stat {
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+
+  &__label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+
+  &__value {
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--text-strong);
+    font-variant-numeric: tabular-nums;
+
+    &--sm {
+      font-size: 1rem;
+    }
+  }
+}
+
+.section {
+  margin-bottom: 1rem;
+  padding: 1.1rem 1.25rem;
+
+  // Tables inside a card don't need a second card shadow.
+  .table-wrap {
+    box-shadow: none;
+  }
+
+  &__title {
+    margin: 0 0 0.25rem;
+    font-size: 1.05rem;
+    color: var(--text-strong);
+  }
+
+  &__hint {
+    margin: 0 0 0.75rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+}
+
+.bar {
+  display: inline-block;
+  vertical-align: middle;
+  width: 8rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  overflow: hidden;
+
+  &__fill {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+  }
+
+  &__label {
+    margin-left: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.changes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.fundamentals {
+  &__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  &__errors {
+    margin: 0.5rem 0;
+    padding: 0.6rem 0.9rem 0.6rem 1.8rem;
+    border-radius: var(--radius-sm);
+    background: var(--warning-soft);
+    color: var(--warning);
+    font-size: 0.875rem;
+  }
+
+  &__note {
+    font-size: 0.85rem;
+    margin: 0.5rem 0;
+  }
+}
+
+.fsection {
+  padding: 0.9rem 0;
+  border-top: 1px solid var(--border);
+
+  &__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  &__title {
+    margin: 0;
+    font-size: 0.95rem;
+    color: var(--text-strong);
+  }
+
+  &__hint {
+    font-size: 0.8rem;
+  }
+
+  &__meta {
+    margin-left: auto;
+    display: flex;
+    gap: 0.35rem;
+  }
+}
+
+.data-table .num {
+  text-align: right;
+}
+
+.ai {
+  &__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  &__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+  }
+
+  &__wait {
+    font-size: 0.85rem;
+  }
+
+  &__summary {
+    margin: 0.5rem 0 0.75rem;
+    font-size: 1rem;
+    color: var(--text-strong);
+  }
+
+  &__facts {
+    margin: 0 0 0.75rem;
+    display: grid;
+    gap: 0.4rem;
+
+    dt {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    dd {
+      margin: 0;
+    }
+  }
+
+  &__lists {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 0.75rem;
+  }
+
+  &__list {
+    padding: 0.6rem 0.8rem;
+    border-radius: var(--radius-sm);
+    background: var(--surface-muted);
+
+    h3 {
+      margin: 0 0 0.35rem;
+      font-size: 0.85rem;
+      color: var(--text-strong);
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 1.1rem;
+      font-size: 0.875rem;
+    }
+
+    &--good {
+      background: var(--success-soft);
+    }
+
+    &--warn {
+      background: var(--warning-soft);
+    }
+
+    &--bad {
+      background: var(--danger-soft);
+    }
+  }
+
+  &__note,
+  &__meta {
+    font-size: 0.8rem;
+    margin: 0.75rem 0 0;
+  }
+
+  &__disclaimer {
+    margin: 0.35rem 0 0;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-style: italic;
+  }
+}
+
+.held-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.verdict-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.verdict {
+  display: inline-block;
+  padding: 0.25rem 0.8rem;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+
+  &--buy {
+    background: var(--success-soft);
+    color: var(--success);
+  }
+
+  &--sell {
+    background: var(--danger-soft);
+    color: var(--danger);
+  }
+
+  &--hold {
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+  }
+
+  &--ignore {
+    background: var(--surface-muted);
+    color: var(--text-muted);
+  }
+}
+
+.skeleton--title {
+  height: 1.6rem;
+  width: 40%;
+  margin-bottom: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .fsection__meta {
+    margin-left: 0;
+  }
+}

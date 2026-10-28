@@ -96,9 +96,10 @@ export function createRepositories(db) {
         const replace = db.transaction((items) => {
           db.prepare("DELETE FROM fund_holdings WHERE fund_id = ?").run(fundId);
           const insert = db.prepare(`
-            INSERT INTO fund_holdings (fund_id, stock_id, weight_percentage)
-            VALUES (?, ?, ?)
+            INSERT INTO fund_holdings (fund_id, stock_id, weight_percentage, quantity, market_value_cr, as_of)
+            VALUES (?, ?, ?, ?, ?, ?)
           `);
+          const setSector = db.prepare("UPDATE stocks SET sector = ? WHERE id = ? AND sector IS NULL");
           // A fund's holding list can legitimately contain the same stock more than
           // once (e.g. Groww renders repeated/duplicate rows). fund_holdings has a
           // UNIQUE(fund_id, stock_id) constraint, so collapse to one row per stock
@@ -112,7 +113,15 @@ export function createRepositories(db) {
               continue;
             }
             seen.add(stockId);
-            insert.run(fundId, stockId, holding.weightPercentage);
+            insert.run(
+              fundId,
+              stockId,
+              holding.weightPercentage ?? null,
+              finiteOrNull(holding.quantity),
+              finiteOrNull(holding.marketValueCr),
+              holding.asOf ?? holding.month ?? null
+            );
+            if (holding.sector) setSector.run(holding.sector, stockId);
           }
           if (skipped > 0) {
             console.warn(
@@ -124,6 +133,25 @@ export function createRepositories(db) {
         this.markFundScraped(fundId);
       },
       upsertStock: (stock) => {
+        // Sources that supply an ISIN (fund-disclosures) are matched on it, so
+        // spelling variants of one company collapse to a single stock row.
+        if (stock.isin) {
+          const byIsin = db.prepare("SELECT id FROM stocks WHERE isin = ?").get(stock.isin);
+          if (byIsin) {
+            if (stock.url) db.prepare("UPDATE stocks SET url = COALESCE(url, ?) WHERE id = ?").run(stock.url, byIsin.id);
+            return byIsin.id;
+          }
+          // Adopt a legacy name-only row for the same company, else insert.
+          const byName = db.prepare("SELECT id, isin FROM stocks WHERE name = ?").get(stock.name);
+          if (byName && !byName.isin) {
+            db.prepare("UPDATE stocks SET isin = ?, url = COALESCE(url, ?) WHERE id = ?")
+              .run(stock.isin, stock.url ?? null, byName.id);
+            return byName.id;
+          }
+          const name = byName ? `${stock.name} (${stock.isin})` : stock.name;
+          return Number(db.prepare("INSERT INTO stocks (name, url, isin) VALUES (?, ?, ?)")
+            .run(name, stock.url ?? null, stock.isin).lastInsertRowid);
+        }
         db.prepare(`
           INSERT INTO stocks (name, url) VALUES (@name, @url)
           ON CONFLICT(name) DO UPDATE SET
@@ -155,7 +183,97 @@ export function createRepositories(db) {
           : db.prepare(base).all();
       },
       getById(stockId) {
-        return db.prepare("SELECT id, name, url FROM stocks WHERE id = ?").get(stockId) ?? null;
+        return db.prepare("SELECT id, name, url, isin, symbol, sector FROM stocks WHERE id = ?").get(stockId) ?? null;
+      },
+      /**
+       * Everything the scrape stored about one stock, for the detail page:
+       * ranking, per-category coverage, every holding fund with weight,
+       * quantity and value, recent category add/remove events, and when
+       * fundamentals were last fetched. Null for an unknown stock.
+       */
+      detail(stockId) {
+        const stock = this.getById(stockId);
+        if (!stock) return null;
+        const holdings = db.prepare(`
+          SELECT f.id AS fund_id, f.name AS fund_name, f.category,
+                 h.weight_percentage, h.quantity, h.market_value_cr, h.as_of
+          FROM fund_holdings h
+          JOIN funds f ON f.id = h.fund_id
+          WHERE h.stock_id = ?
+          ORDER BY h.weight_percentage IS NULL, h.weight_percentage DESC, f.name
+        `).all(stockId);
+        const changes = db.prepare(`
+          SELECT c.category, c.change_type, r.started_at AS run_at, c.run_id
+          FROM category_stock_changes c
+          JOIN category_change_runs r ON r.id = c.run_id
+          WHERE c.stock_id = ?
+          ORDER BY c.run_id DESC, c.category
+          LIMIT 50
+        `).all(stockId);
+        const fundamentals = db.prepare(
+          "SELECT section, fetched_at FROM stock_fundamentals WHERE stock_id = ? ORDER BY section"
+        ).all(stockId);
+        const asOfDates = [...new Set(holdings.map((row) => row.as_of).filter(Boolean))].sort().reverse();
+        const sum = (key) => {
+          const values = holdings.map((row) => row[key]).filter((value) => typeof value === "number");
+          return values.length ? values.reduce((total, value) => total + value, 0) : null;
+        };
+        return {
+          stock: { id: stock.id, name: stock.name, isin: stock.isin ?? null, symbol: stock.symbol ?? null, sector: stock.sector ?? null, url: stock.url ?? null },
+          totals: {
+            funds_holding: new Set(holdings.map((row) => row.fund_id)).size,
+            total_quantity: sum("quantity"),
+            total_market_value_cr: sum("market_value_cr"),
+            latest_as_of: asOfDates[0] ?? null
+          },
+          holdings,
+          recent_changes: changes,
+          fundamentals_cached: fundamentals
+        };
+      },
+      setSymbol(stockId, symbol) {
+        db.prepare("UPDATE stocks SET symbol = ? WHERE id = ?").run(symbol, stockId);
+      }
+    },
+    analyses: {
+      get(stockId, held) {
+        return parseAnalysisRow(db.prepare(
+          "SELECT stock_id, held, provider, model, input_hash, result, created_at FROM stock_analyses WHERE stock_id = ? AND held = ?"
+        ).get(stockId, held ? 1 : 0));
+      },
+      upsert(stockId, held, { provider, model, inputHash, result }) {
+        db.prepare(`
+          INSERT INTO stock_analyses (stock_id, held, provider, model, input_hash, result, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(stock_id, held) DO UPDATE SET
+            provider = excluded.provider,
+            model = excluded.model,
+            input_hash = excluded.input_hash,
+            result = excluded.result,
+            created_at = excluded.created_at
+        `).run(stockId, held ? 1 : 0, provider, model, inputHash, JSON.stringify(result));
+        return this.get(stockId, held);
+      }
+    },
+    fundamentals: {
+      list(stockId) {
+        return db.prepare(
+          "SELECT section, provider, symbol, payload, fetched_at FROM stock_fundamentals WHERE stock_id = ?"
+        ).all(stockId).map(parseFundamentalsRow);
+      },
+      upsert(stockId, section, { provider, symbol, payload }) {
+        db.prepare(`
+          INSERT INTO stock_fundamentals (stock_id, section, provider, symbol, payload, fetched_at)
+          VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(stock_id, section) DO UPDATE SET
+            provider = excluded.provider,
+            symbol = excluded.symbol,
+            payload = excluded.payload,
+            fetched_at = excluded.fetched_at
+        `).run(stockId, section, provider, symbol ?? null, JSON.stringify(payload ?? null));
+        return parseFundamentalsRow(db.prepare(
+          "SELECT section, provider, symbol, payload, fetched_at FROM stock_fundamentals WHERE stock_id = ? AND section = ?"
+        ).get(stockId, section));
       }
     },
     stockMetrics: {
@@ -187,6 +305,27 @@ export function createRepositories(db) {
       }
     },
     aggregation: {
+      // Kosha's own signal for one stock — how many tracked funds hold it,
+      // overall and per category — so the LLM can weigh fund-manager consensus
+      // alongside fundamentals.
+      signalFor(stockId) {
+        const overall = db.prepare(`
+          SELECT consensus_score AS funds_holding, rank, weight_avg, weight_min, weight_max
+          FROM stock_aggregations WHERE stock_id = ?
+        `).get(stockId) ?? null;
+        const categories = db.prepare(`
+          SELECT f.category,
+                 COUNT(DISTINCT h.fund_id) AS funds_holding,
+                 (SELECT COUNT(*) FROM funds all_f WHERE all_f.category = f.category) AS funds_in_category,
+                 AVG(CASE WHEN h.weight_percentage > 0 THEN h.weight_percentage END) AS weight_avg
+          FROM fund_holdings h
+          JOIN funds f ON f.id = h.fund_id
+          WHERE h.stock_id = ? AND f.category IS NOT NULL
+          GROUP BY f.category
+          ORDER BY funds_holding DESC, f.category
+        `).all(stockId);
+        return { ...(overall ?? { funds_holding: 0, rank: null }), categories };
+      },
       recompute() {
         db.prepare(`
           INSERT INTO stock_aggregations
@@ -432,4 +571,24 @@ export function deserializeMetrics(row) {
     raw: row.raw ? JSON.parse(row.raw) : null,
     updated_at: row.updated_at
   };
+}
+
+function parseFundamentalsRow(row) {
+  if (!row) return null;
+  let payload = null;
+  try {
+    payload = JSON.parse(row.payload);
+  } catch {
+    payload = row.payload;
+  }
+  return { ...row, payload };
+}
+
+function parseAnalysisRow(row) {
+  if (!row) return null;
+  return { ...row, held: Boolean(row.held), result: JSON.parse(row.result) };
+}
+
+function finiteOrNull(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }

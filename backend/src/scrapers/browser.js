@@ -1,5 +1,11 @@
 import { chromium } from "playwright";
 
+// Run `operation` with a Playwright page only when some source needs one;
+// API sources get `null` and no Chromium is launched.
+export async function withPageIfNeeded(needsBrowser, configuration, operation, runWithBrowser = withBrowser) {
+  return needsBrowser ? runWithBrowser(configuration, operation) : operation(null);
+}
+
 export async function withBrowser(configuration, operation) {
   const browser = await chromium.launch({
     headless: configuration.browser?.headless ?? true

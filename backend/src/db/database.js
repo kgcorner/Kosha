@@ -69,6 +69,34 @@ CREATE TABLE IF NOT EXISTS stock_metrics (
   FOREIGN KEY(stock_id) REFERENCES stocks(id) ON DELETE CASCADE
 );
 
+-- Lazily fetched fundamentals (one row per stock per section: profile,
+-- financials, shareholding, pledge). Filled only when a client requests a
+-- stock's fundamentals, never by the scrape job.
+CREATE TABLE IF NOT EXISTS stock_fundamentals (
+  stock_id INTEGER NOT NULL,
+  section TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  symbol TEXT,
+  payload TEXT NOT NULL,
+  fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (stock_id, section),
+  FOREIGN KEY(stock_id) REFERENCES stocks(id) ON DELETE CASCADE
+);
+
+-- Cached on-demand LLM analyses, one per stock per "held" flag. Reused while
+-- input_hash (digest of fund signal + fundamentals + model + prompt) matches.
+CREATE TABLE IF NOT EXISTS stock_analyses (
+  stock_id INTEGER NOT NULL,
+  held INTEGER NOT NULL,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  input_hash TEXT NOT NULL,
+  result TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (stock_id, held),
+  FOREIGN KEY(stock_id) REFERENCES stocks(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS scrape_jobs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   status TEXT NOT NULL DEFAULT 'queued',
@@ -116,10 +144,23 @@ export function createDatabase(databasePath) {
   db.exec(schema);
   ensureColumn(db, "funds", "category", "TEXT");
   ensureColumn(db, "stocks", "url", "TEXT");
+  ensureColumn(db, "stocks", "isin", "TEXT");
+  // ISIN is the stable stock identity when a source provides it (AMC disclosures
+  // spell one company several ways: "Ltd." / "Limited" / "EQ - ...").
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_stocks_isin ON stocks(isin) WHERE isin IS NOT NULL");
+  // Exchange symbol resolved lazily by the fundamentals provider (e.g. Tapetide).
+  ensureColumn(db, "stocks", "symbol", "TEXT");
   ensureColumn(db, "stock_aggregations", "weight_avg", "REAL");
   ensureColumn(db, "stock_aggregations", "weight_min", "REAL");
   ensureColumn(db, "stock_aggregations", "weight_max", "REAL");
   makeWeightNullable(db);
+  // Extra per-holding facts from richer sources (AMC disclosures): shares held,
+  // market value and disclosure date. Added after makeWeightNullable, which may
+  // rebuild fund_holdings with the original column set.
+  ensureColumn(db, "fund_holdings", "quantity", "REAL");
+  ensureColumn(db, "fund_holdings", "market_value_cr", "REAL");
+  ensureColumn(db, "fund_holdings", "as_of", "TEXT");
+  ensureColumn(db, "stocks", "sector", "TEXT");
   backfillWeightStats(db);
   return db;
 }
