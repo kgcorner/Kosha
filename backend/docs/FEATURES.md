@@ -71,6 +71,8 @@ Resolution is **layered and self-describing** — for each metric the extractor 
 
 ## 2. REST API
 
+> The complete, current endpoint reference — including `/stocks/:id/fundamentals` and `/stocks/:id/analysis` — is [`API.md`](API.md). This section covers the original scrape and ranking endpoints.
+
 Every response is JSON. Errors use `{ "error": "<message>" }` with status `400` (bad pagination params), `404` (unknown job id), `409` (scrape already running), or `500` (unexpected).
 
 ### 2.1 `GET /api/stocks/leaderboard`

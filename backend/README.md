@@ -2,7 +2,7 @@
 
 Node.js API and scheduled scraper for Indian mutual-fund holdings and cross-fund stock aggregation.
 
-**Full feature & API reference with request/response payloads: [`docs/FEATURES.md`](docs/FEATURES.md).**
+**API reference (every endpoint, parameters, responses, errors): [`docs/API.md`](docs/API.md).** Feature overview and configuration: [`docs/FEATURES.md`](docs/FEATURES.md).
 
 ## Setup
 

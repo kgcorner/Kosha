@@ -42,7 +42,7 @@ export class StockScraper {
       // full configured metric set (price, ratios, financials, shareholding,
       // peers) so LLM analysis has real fundamentals, not just fund membership.
       const targets = limitStocks([...stocks.values()], this.configuration);
-      const withoutUrl = targets.filter((stock) => !stock.url).length;
+      const withoutUrl = needsBrowser ? targets.filter((stock) => !stock.url).length : 0;
       if (withoutUrl > 0) {
         console.warn(
           `[scrape:stocks] ${withoutUrl} stock(s) have no detail URL — check selectors.mf_detail_page.stock_url`
