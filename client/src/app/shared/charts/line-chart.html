@@ -1,0 +1,103 @@
+<figure class="chart">
+  @if (series().length > 1) {
+    <ul class="chart__legend">
+      @for (s of series(); track s.name) {
+        <li>
+          <span class="key key--line" [class]="'key key--line slot-' + s.slot"></span>{{ s.name }}
+        </li>
+      }
+    </ul>
+  }
+  <div class="chart__plot">
+    <svg
+      #svg
+      [attr.viewBox]="'0 0 ' + widthPx() + ' ' + height()"
+      role="img"
+      tabindex="0"
+      [attr.aria-label]="summary()"
+      (pointermove)="onPointer($event, svg)"
+      (pointerdown)="onPointer($event, svg)"
+      (pointerleave)="active.set(null)"
+      (keydown)="onKey($event)"
+      (blur)="active.set(null)"
+    >
+      @for (tick of ticks(); track tick) {
+        <line
+          class="grid"
+          [attr.x1]="pad.left"
+          [attr.x2]="widthPx() - pad.right"
+          [attr.y1]="y(tick)"
+          [attr.y2]="y(tick)"
+        />
+        <text class="axis axis--y" [attr.x]="pad.left - 6" [attr.y]="y(tick)" dy="0.32em">
+          {{ format()(tick) }}
+        </text>
+      }
+      @for (t of xTicks(); track t.index) {
+        <text
+          class="axis axis--x"
+          [attr.x]="x(t.index)"
+          [attr.y]="height() - 6"
+          [attr.text-anchor]="
+            t.index === 0 ? 'start' : t.index === labels().length - 1 ? 'end' : 'middle'
+          "
+        >
+          {{ t.label }}
+        </text>
+      }
+      @for (p of paths(); track p.name) {
+        <path class="line" [class]="'line slot-' + p.slot" [attr.d]="p.d" />
+      }
+      @if (readout(); as r) {
+        <line
+          class="crosshair"
+          [attr.x1]="r.x"
+          [attr.x2]="r.x"
+          [attr.y1]="pad.top"
+          [attr.y2]="height() - pad.bottom"
+        />
+        @for (row of r.rows; track row.name) {
+          @if (row.cy !== null) {
+            <circle
+              class="dot"
+              [class]="'dot slot-' + row.slot"
+              [attr.cx]="r.x"
+              [attr.cy]="row.cy"
+              r="4"
+            />
+          }
+        }
+      } @else {
+        @for (end of ends(); track end.slot) {
+          <circle
+            class="dot"
+            [class]="'dot slot-' + end.slot"
+            [attr.cx]="end.cx"
+            [attr.cy]="end.cy"
+            r="4"
+          />
+        }
+      }
+    </svg>
+    @if (readout(); as r) {
+      <div
+        class="tooltip"
+        [style.left]="tooltipLeft(r.x)"
+        [class.tooltip--left]="r.x > widthPx() * 0.6"
+        role="status"
+      >
+        <div class="tooltip__title">{{ r.label }}</div>
+        @for (row of r.rows; track row.name) {
+          <div class="tooltip__row">
+            <span [class]="'key key--line slot-' + row.slot"></span>
+            <strong>{{ display(row.value) }}</strong>
+            <span class="tooltip__name">{{ row.name }}</span>
+          </div>
+        }
+      </div>
+    }
+  </div>
+  @if (caption()) {
+    <figcaption class="chart__caption">{{ caption() }}</figcaption>
+  }
+</figure>

@@ -255,6 +255,20 @@ export function createRepositories(db) {
         return this.get(stockId, held);
       }
     },
+    market: {
+      get(key) {
+        return parseFundamentalsRow(db.prepare(
+          "SELECT key AS section, provider, NULL AS symbol, payload, fetched_at FROM market_data WHERE key = ?"
+        ).get(key));
+      },
+      upsert(key, { provider, payload }) {
+        db.prepare(`
+          INSERT INTO market_data (key, provider, payload, fetched_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(key) DO UPDATE SET provider = excluded.provider, payload = excluded.payload, fetched_at = excluded.fetched_at
+        `).run(key, provider, JSON.stringify(payload ?? null));
+        return this.get(key);
+      }
+    },
     fundamentals: {
       list(stockId) {
         return db.prepare(

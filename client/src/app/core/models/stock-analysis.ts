@@ -14,6 +14,10 @@ export interface StockAnalysis {
     summary: string;
     fund_consensus: string;
     valuation: string;
+    /** Added in prompt v2; absent on analyses stored before it. */
+    price_trend?: string;
+    ownership_trend?: string;
+    analyst_view?: string;
     strengths: string[];
     risks: string[];
     red_flags: string[];
@@ -28,7 +32,9 @@ export interface StockAnalysis {
   inputs: {
     fund_signal: FundSignal | null;
     fundamentals_sections: string[];
+    market_sections?: string[];
     stale_sections: string[];
+    prompt_chars?: number;
   };
   errors: Array<FundamentalsError & { source?: string }>;
   disclaimer: string;

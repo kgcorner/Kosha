@@ -97,6 +97,15 @@ CREATE TABLE IF NOT EXISTS stock_analyses (
   FOREIGN KEY(stock_id) REFERENCES stocks(id) ON DELETE CASCADE
 );
 
+-- Market-wide provider data (FII/DII flows, market pulse), one row per key,
+-- refreshed at most once per calendar day and shared by every stock.
+CREATE TABLE IF NOT EXISTS market_data (
+  key TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS scrape_jobs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   status TEXT NOT NULL DEFAULT 'queued',

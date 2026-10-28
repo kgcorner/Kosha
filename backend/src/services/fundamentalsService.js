@@ -1,11 +1,40 @@
 import { TapetideError } from "./tapetideClient.js";
+import { extractPriceRows, summarizePriceHistory } from "./marketMath.js";
 
-/** Sections fetched from Tapetide and the tool that provides each. */
+/**
+ * Per-stock sections fetched from Tapetide and the tool that provides each.
+ *   profile       quote, valuation & quality ratios, growth, technical
+ *                 indicators (RSI, SMA/EMA, MACD, ...) and analyst consensus
+ *   financials    quarterly + annual P&L, balance sheet, cash flow, ratios
+ *   shareholding  quarterly promoter / FII / DII / public holding
+ *   pledge        promoter pledge trend
+ *   price_history 1 year of daily OHLCV + delivery % (summarised in code)
+ *   forecasts     analyst EPS / revenue / price estimates vs actuals
+ */
 export const DEFAULT_SECTIONS = Object.freeze({
-  profile: { tool: "get_company_profile", args: {} },
+  profile: { tool: "get_company_profile", args: { include: ["technicals", "ratings"] } },
   financials: { tool: "get_financials", args: {} },
   shareholding: { tool: "get_shareholding", args: { type: "quarterly" } },
-  pledge: { tool: "get_promoter_pledge", args: {} }
+  pledge: { tool: "get_promoter_pledge", args: {} },
+  price_history: {
+    tool: "get_price_history",
+    args: { days: 365 },
+    summarize: summarizePriceHistory,
+    // Compact chart series for clients; the LLM digest uses `summary` only.
+    series: (payload) => extractPriceRows(payload).map(({ date, close, volume }) => ({ date, close, volume }))
+  },
+  forecasts: { tool: "get_forecasts", args: {} }
+});
+
+/**
+ * Market-wide context, the same for every stock, fetched at most once per day
+ * in total (not per stock) and stored in `market_data`.
+ *   fii_dii  30 trading days of FII/DII cash flows, aggregates and streaks
+ *   pulse    today's FII/DII net flows, Nifty 50 valuation, India VIX
+ */
+export const MARKET_SECTIONS = Object.freeze({
+  fii_dii: { tool: "get_fii_dii_detail", args: {} },
+  pulse: { tool: "get_market_pulse", args: {} }
 });
 
 export const DEFAULT_TIMEZONE = "Asia/Kolkata";
@@ -24,10 +53,11 @@ export const DEFAULT_TIMEZONE = "Asia/Kolkata";
  * the next view that day tries again.
  */
 export class FundamentalsService {
-  constructor({ repositories, client, sections = DEFAULT_SECTIONS, now = Date.now, provider = "tapetide", timezone = DEFAULT_TIMEZONE }) {
+  constructor({ repositories, client, sections = DEFAULT_SECTIONS, marketSections = MARKET_SECTIONS, now = Date.now, provider = "tapetide", timezone = DEFAULT_TIMEZONE }) {
     this.repositories = repositories;
     this.client = client;
     this.sections = sections;
+    this.marketSections = marketSections;
     this.now = now;
     this.provider = provider;
     this.timezone = timezone;
@@ -62,7 +92,7 @@ export class FundamentalsService {
       const definition = this.sections[name];
       const hit = cached.get(name);
       if (hit && this.fetchedToday(hit)) {
-        result[name] = shape(hit, { cached: true, stale: false });
+        result[name] = shape(hit, { cached: true, stale: false }, definition);
         continue;
       }
       try {
@@ -73,15 +103,15 @@ export class FundamentalsService {
           symbol,
           payload: data
         });
-        result[name] = shape(row, { cached: false, stale: false });
+        result[name] = shape(row, { cached: false, stale: false }, definition);
       } catch (error) {
         errors.push(describeError(name, error));
-        if (hit) result[name] = shape(hit, { cached: true, stale: true });
+        if (hit) result[name] = shape(hit, { cached: true, stale: true }, definition);
         // Quota/auth problems will fail every remaining section the same way.
         if (isFatal(error)) {
           for (const rest of wanted.slice(wanted.indexOf(name) + 1)) {
             const restHit = cached.get(rest);
-            if (restHit) result[rest] = shape(restHit, { cached: true, stale: !this.fetchedToday(restHit) });
+            if (restHit) result[rest] = shape(restHit, { cached: true, stale: !this.fetchedToday(restHit) }, this.sections[rest]);
           }
           break;
         }
@@ -96,6 +126,46 @@ export class FundamentalsService {
       cache_policy: { rule: "one provider call per stock per section per calendar day", timezone: this.timezone, today: this.dayKey(this.now()) },
       errors
     };
+  }
+
+  /**
+   * Market-wide context (FII/DII flows, market pulse) under the same
+   * once-per-calendar-day rule, shared by every stock. Never throws: failures
+   * fall back to the last stored copy and are listed in `errors`.
+   */
+  async getMarketContext() {
+    if (this.marketInFlight) return this.marketInFlight;
+    this.marketInFlight = this.loadMarket().finally(() => {
+      this.marketInFlight = null;
+    });
+    return this.marketInFlight;
+  }
+
+  async loadMarket() {
+    const sections = {};
+    const errors = [];
+    for (const [name, definition] of Object.entries(this.marketSections)) {
+      const hit = this.repositories.market.get(name);
+      if (hit && this.fetchedToday(hit)) {
+        sections[name] = shape(hit, { cached: true, stale: false });
+        continue;
+      }
+      try {
+        const data = await this.client.callTool(definition.tool, { ...definition.args });
+        sections[name] = shape(this.repositories.market.upsert(name, { provider: this.provider, payload: data }), { cached: false, stale: false });
+      } catch (error) {
+        errors.push(describeError(name, error));
+        if (hit) sections[name] = shape(hit, { cached: true, stale: true });
+        if (isFatal(error)) {
+          for (const rest of Object.keys(this.marketSections).filter((key) => !(key in sections) && key !== name)) {
+            const restHit = this.repositories.market.get(rest);
+            if (restHit) sections[rest] = shape(restHit, { cached: true, stale: !this.fetchedToday(restHit) });
+          }
+          break;
+        }
+      }
+    }
+    return { provider: this.provider, sections, errors };
   }
 
   resolveSections(requested) {
@@ -137,9 +207,29 @@ export class FundamentalsService {
   }
 }
 
-function shape(row, { cached, stale }) {
+// `summary` carries numbers computed in code from the raw payload (e.g. price
+// statistics), so clients and the LLM don't have to derive them.
+function shape(row, { cached, stale }, definition = null) {
+  let summary;
+  if (definition?.summarize) {
+    try {
+      summary = definition.summarize(row.payload) ?? null;
+    } catch {
+      summary = null;
+    }
+  }
+  let series;
+  if (definition?.series) {
+    try {
+      series = definition.series(row.payload) ?? [];
+    } catch {
+      series = [];
+    }
+  }
   return {
     data: row.payload,
+    ...(summary !== undefined ? { summary } : {}),
+    ...(series !== undefined ? { series } : {}),
     fetched_at: row.fetched_at,
     provider: row.provider,
     cached,

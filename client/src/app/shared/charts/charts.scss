@@ -1,0 +1,174 @@
+// Categorical slots: the dataviz reference palette (light mode; the app has no
+// dark theme). Fixed order, never cycled. Slots 3/4 are below 3:1 contrast on
+// white, so every chart keeps a visible legend and a table view ("Show data").
+:host {
+  display: block;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --chart-grid: #eceef1;
+  --chart-axis: #8a919c;
+}
+
+.chart {
+  margin: 0;
+}
+
+.chart__legend {
+  list-style: none;
+  margin: 0 0 0.35rem;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+
+  li {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+}
+
+.chart__plot {
+  position: relative;
+}
+
+svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  touch-action: pan-y;
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+    border-radius: var(--radius-sm);
+  }
+}
+
+.grid {
+  stroke: var(--chart-grid);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+
+  &--base {
+    stroke: var(--border-strong);
+  }
+}
+
+.axis {
+  fill: var(--chart-axis);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+
+  &--y {
+    text-anchor: end;
+  }
+}
+
+.line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.dot {
+  stroke: var(--surface, #fff);
+  stroke-width: 2;
+}
+
+.crosshair {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.hit {
+  fill: transparent;
+  cursor: default;
+}
+
+.band-highlight {
+  fill: var(--surface-muted);
+}
+
+@for $i from 1 through 4 {
+  .line.slot-#{$i},
+  path.line.slot-#{$i} {
+    stroke: var(--series-#{$i});
+  }
+  .dot.slot-#{$i},
+  .column.slot-#{$i} {
+    fill: var(--series-#{$i});
+  }
+  .key.slot-#{$i} {
+    background: var(--series-#{$i});
+  }
+}
+
+.key {
+  display: inline-block;
+  flex: none;
+
+  &--line {
+    width: 14px;
+    height: 2px;
+    border-radius: 1px;
+  }
+
+  &--box {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+  }
+}
+
+.tooltip {
+  position: absolute;
+  top: 0;
+  transform: translateX(10px);
+  min-width: 9rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 0.8rem;
+  pointer-events: none;
+  z-index: 2;
+
+  &--left {
+    transform: translateX(calc(-100% - 10px));
+  }
+
+  &__title {
+    color: var(--text-muted);
+    margin-bottom: 0.2rem;
+  }
+
+  &__row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    white-space: nowrap;
+
+    strong {
+      color: var(--text-strong);
+      font-variant-numeric: tabular-nums;
+    }
+  }
+
+  &__name {
+    color: var(--text-muted);
+  }
+}
+
+.chart__caption {
+  margin-top: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}

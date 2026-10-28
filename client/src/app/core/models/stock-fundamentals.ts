@@ -1,6 +1,7 @@
 import { FundSignal } from './stock-detail';
 
-export type FundamentalsSectionName = 'profile' | 'financials' | 'shareholding' | 'pledge';
+export type FundamentalsSectionName =
+  'profile' | 'financials' | 'shareholding' | 'pledge' | 'price_history' | 'forecasts';
 
 /** `GET /api/stocks/:id/fundamentals` — provider data, stored and reused per calendar day. */
 export interface StockFundamentals {
@@ -22,6 +23,10 @@ export interface FundamentalsSection {
   cached: boolean;
   /** The provider failed today, so an older stored copy was returned. */
   stale: boolean;
+  /** Numbers computed by the backend from `data` (price history: returns, SMAs, 52w range ...). */
+  summary?: Record<string, unknown> | null;
+  /** Chart-ready series (price history: one point per trading day, oldest first). */
+  series?: Array<{ date: string; close: number; volume: number | null }>;
 }
 
 export interface FundamentalsError {
