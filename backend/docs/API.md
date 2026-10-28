@@ -53,7 +53,7 @@ Secrets are read from the environment only; never put them in config files.
 | Variable | Needed for | Notes |
 |---|---|---|
 | `TAPETIDE_TOKEN` | `/stocks/:id/fundamentals` (and analysis) | Personal token from tapetide.com → Settings → Tokens (`tpt_rt_...`) |
-| `OPENROUTER_API_KEY` | `/stocks/:id/analysis` | Name set by `llm.api_key_env`; not needed for a local LM Studio/Ollama server |
+| `OPENROUTER_API_KEY` | `/stocks/:id/analysis` | Name set by `ai.api_key_env`; not needed for a local LM Studio/Ollama server |
 | `DATABASE_PATH`, `PORT`, `APP_CONFIG`, `SCRAPING_CONFIG` | Optional overrides | Paths are relative to `backend/` |
 
 ### Identifiers
@@ -107,7 +107,7 @@ Stocks ranked by fund consensus: the number of distinct tracked funds holding th
 | `weight_avg` / `weight_min` / `weight_max` | Per-fund weight (% of fund NAV) across holding funds. Use these for display. |
 | `total_weight_sum` | Sum of weights across funds; for ordering only, **not meaningful to display** |
 | `rank` | 1-based position in this ranking |
-| `thesis`, `pros`, `cons`, `last_analyzed_at` | Optional scrape-time AI thesis (`ai.enabled`); empty when disabled |
+| `thesis`, `pros`, `cons`, `last_analyzed_at` | Optional scrape-time AI thesis (`ai.scrape_thesis.enabled`); empty when disabled |
 | `stock_url`, `metrics` | Stock page and scraped metrics; `null` for the default (API) source |
 | `categories` | Every category in which at least one tracked fund holds the stock |
 
@@ -322,7 +322,7 @@ Real response without an LLM key:
 { "error": "LLM API key is not set for https://openrouter.ai/api/v1 (e.g. OPENROUTER_API_KEY)", "code": "not_configured" }
 ```
 
-**LLM configuration** (`config/app.json` → `llm`; any OpenAI-compatible endpoint):
+**LLM configuration** (`config/app.json` → `ai`; any OpenAI-compatible endpoint):
 
 | Setup | `base_url` | `api_key_env` | `model` example |
 |---|---|---|---|

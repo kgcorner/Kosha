@@ -6,6 +6,7 @@ import { CategoryChanges } from './models/category-changes';
 import { Fund } from './models/fund';
 import { LeaderboardRow } from './models/leaderboard-row';
 import { ScrapeJob } from './models/scrape-job';
+import { StockAnalysis } from './models/stock-analysis';
 import { StockDetail } from './models/stock-detail';
 import { FundamentalsSectionName, StockFundamentals } from './models/stock-fundamentals';
 
@@ -64,6 +65,21 @@ export class ApiService {
     return this.http.get<StockFundamentals>(`${this.basePath}/stocks/${stockId}/fundamentals`, {
       params,
     });
+  }
+
+  /**
+   * AI verdict for one stock: BUY/IGNORE, or HOLD/SELL when `held` is true. The
+   * backend caches it until its inputs change; `refresh` re-runs the model.
+   */
+  getAnalysis(
+    stockId: number,
+    options: { held?: boolean; refresh?: boolean } = {},
+  ): Observable<StockAnalysis> {
+    let params = new HttpParams().set('held', String(options.held ?? false));
+    if (options.refresh) {
+      params = params.set('refresh', 'true');
+    }
+    return this.http.get<StockAnalysis>(`${this.basePath}/stocks/${stockId}/analysis`, { params });
   }
 
   getFunds(): Observable<Fund[]> {

@@ -163,6 +163,125 @@
         }
       </section>
 
+      <section class="card section ai" aria-live="polite">
+        <div class="ai__head">
+          <div>
+            <h2 class="section__title">AI analysis</h2>
+            <p class="section__hint">
+              An LLM weighs the fund-manager consensus above together with this stock's fundamentals
+              (fetched if needed, at most once a day) and gives a verdict with reasons.
+            </p>
+          </div>
+          <label class="held-toggle">
+            <input
+              type="checkbox"
+              [checked]="held()"
+              (change)="setHeld($any($event.target).checked)"
+            />
+            I already hold this stock
+          </label>
+        </div>
+
+        <div class="ai__actions">
+          <button
+            type="button"
+            class="btn btn--primary"
+            [disabled]="analysisState() === 'loading'"
+            (click)="runAnalysis()"
+          >
+            @if (analysisState() === 'loading') {
+              <span class="spinner" aria-hidden="true"></span> Analysing…
+            } @else {
+              {{ held() ? 'Should I hold or sell?' : 'Should I buy?' }}
+            }
+          </button>
+          @if (analysis() && analysisState() !== 'loading') {
+            <button type="button" class="btn btn--ghost" (click)="runAnalysis(true)">Re-run</button>
+          }
+          @if (analysisState() === 'loading') {
+            <span class="text-muted ai__wait">This can take up to a minute.</span>
+          }
+        </div>
+
+        @if (analysisState() === 'error') {
+          <div class="state state--error" role="alert">
+            <p class="state__message">{{ analysisError() }}</p>
+          </div>
+        }
+
+        @if (analysis(); as a) {
+          <div class="verdict-row">
+            <span class="verdict" [class]="'verdict ' + verdictClass(a.analysis.verdict)">{{
+              a.analysis.verdict
+            }}</span>
+            <span class="badge badge--muted">{{ a.analysis.confidence }} confidence</span>
+          </div>
+          <p class="ai__summary">{{ a.analysis.summary }}</p>
+
+          <dl class="ai__facts">
+            @if (a.analysis.fund_consensus) {
+              <div>
+                <dt>Fund consensus</dt>
+                <dd>{{ a.analysis.fund_consensus }}</dd>
+              </div>
+            }
+            @if (a.analysis.valuation) {
+              <div>
+                <dt>Valuation</dt>
+                <dd>{{ a.analysis.valuation }}</dd>
+              </div>
+            }
+          </dl>
+
+          <div class="ai__lists">
+            @for (
+              group of [
+                { title: 'Strengths', items: a.analysis.strengths, tone: 'good' },
+                { title: 'Risks', items: a.analysis.risks, tone: 'warn' },
+                { title: 'Red flags', items: a.analysis.red_flags, tone: 'bad' },
+                {
+                  title: 'What would change this view',
+                  items: a.analysis.what_would_change_view,
+                  tone: '',
+                },
+                { title: 'Data gaps', items: a.analysis.data_gaps, tone: '' },
+              ];
+              track group.title
+            ) {
+              @if (group.items.length > 0) {
+                <div class="ai__list" [class]="'ai__list ai__list--' + (group.tone || 'plain')">
+                  <h3>{{ group.title }}</h3>
+                  <ul>
+                    @for (item of group.items; track $index) {
+                      <li>{{ item }}</li>
+                    }
+                  </ul>
+                </div>
+              }
+            }
+          </div>
+
+          @if (a.errors.length > 0 || a.inputs.stale_sections.length > 0) {
+            <p class="ai__note text-muted">
+              @if (a.inputs.fundamentals_sections.length === 0) {
+                No fundamentals were available, so this verdict uses the fund signal only.
+              } @else if (a.inputs.stale_sections.length > 0) {
+                Older stored data was used for: {{ a.inputs.stale_sections.join(', ') }}.
+              }
+              @for (e of a.errors; track $index) {
+                <br />{{ e.section }}: {{ e.message }}
+              }
+            </p>
+          }
+
+          <p class="ai__meta text-muted">
+            {{ a.model.model }} via {{ a.model.provider }} ·
+            {{ a.cached ? 'stored result from' : 'generated' }} {{ timestamp(a.generated_at) }}
+          </p>
+          <p class="ai__disclaimer">{{ a.disclaimer }}</p>
+        }
+      </section>
+
       <section class="card section fundamentals" aria-live="polite">
         <div class="fundamentals__head">
           <div>

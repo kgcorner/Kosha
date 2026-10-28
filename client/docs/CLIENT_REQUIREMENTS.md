@@ -67,16 +67,16 @@ Aligned with the existing `kosha/` workspace — **use only what is already inst
 
 ## 3. Backend Integration Contract
 
-**Base URL:** `http://localhost:3300` (backend default port; see `config/app.json`). Every response is JSON; every error is `{ "error": "<message>" }`.
+**Base URL:** `http://localhost:5100` (backend default port; see `config/app.json`). Every response is JSON; every error is `{ "error": "<message>" }`.
 
 ### 3.1 CORS / Dev Proxy — REQUIRED SETUP
 
 The backend (`backend/src/app.js`) currently registers **no CORS middleware**. Therefore the client MUST NOT rely on cross-origin browser requests. Two acceptable options, in order of preference:
 
-1. **Add an Angular dev-server proxy** (`kosha/proxy.conf.json`) mapping `/api` → `http://localhost:3300`, and run `ng serve --proxy-config proxy.conf.json` (add `serve.options.proxyConfig` in `angular.json`). The client then calls **relative** URLs (`/api/...`), which also works behind a reverse proxy in production.
+1. **Add an Angular dev-server proxy** (`kosha/proxy.conf.json`) mapping `/api` → `http://localhost:5100`, and run `ng serve --proxy-config proxy.conf.json` (add `serve.options.proxyConfig` in `angular.json`). The client then calls **relative** URLs (`/api/...`), which also works behind a reverse proxy in production.
 2. If a proxy is not used, the backend must add CORS middleware. **This is a backend change, out of scope for the client ticket** — raise it separately.
 
-**Requirement:** `ApiService` MUST use a configurable relative base path (`/api`). Do not hard-code `http://localhost:3300` into components.
+**Requirement:** `ApiService` MUST use a configurable relative base path (`/api`). Do not hard-code `http://localhost:5100` into components.
 
 ### 3.2 Endpoint: `GET /api/stocks/leaderboard`
 

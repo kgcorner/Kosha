@@ -19,7 +19,7 @@ The SQLite database is created at `data/stocks.sqlite` by default.
 ## Configuration
 
 - `config/scraping.json` configures the fund categories, the source adapter (`source`, now `fund-disclosures` by default), XPath selectors (Groww/Moneycontrol only), browser timeouts, and an optional fund limit. Each category may carry its own `xpath`, falling back to `selectors.mf_list_page.fund_row`.
-- `config/app.json` configures the API port, SQLite path, cron expression, and the LLM provider (`llm`, OpenAI-compatible), Tapetide fundamentals (`fundamentals`) and the optional scrape-time thesis (`ai`).
+- `config/app.json` configures the API port, SQLite path, cron expression, the OpenAI-compatible LLM (`ai`, also covering the optional scrape-time thesis in `ai.scrape_thesis`) and Tapetide fundamentals (`fundamentals`).
 - Set `APP_CONFIG`, `SCRAPING_CONFIG`, `PORT`, or `DATABASE_PATH` to override defaults. Config paths are relative to `backend/`.
 - Groww's holdings table (`Name | Sector | Instruments | Assets`) is read row-by-row, so portfolio **weights are captured** (`weight_percentage` from the Assets column) and each row's **stock detail URL** (`stock_url`, the company cell's `//a/@href`) is stored. The leaderboard ranks by consensus (distinct funds) then summed weight internally, but **displays the per-fund average weight with its min–max range** (`weight_avg` / `weight_min` / `weight_max`) — summing one stock's weight across dozens of funds is not a meaningful figure.
 - Each stock's own detail page is then visited once and every metric under `selectors.stock_page.metrics` (price, valuation ratios, financial trends, shareholding, corporate actions, filings, peers) is persisted to `stock_metrics`; `selectors.stock_page.hints` provides XPath/label/`__NEXT_DATA__`-payload fallbacks for Groww's moving markup, and `scrape.stock_limit` optionally caps how many stock pages a run visits.
@@ -28,7 +28,7 @@ The SQLite database is created at `data/stocks.sqlite` by default.
 
 `GET /api/stocks/:id/analysis` sends Kosha's fund signal plus the stock's fundamentals to an LLM and returns a verdict: **BUY / IGNORE** by default, or **HOLD / SELL** with `?held=true`. The response includes confidence, a summary, fund consensus, valuation, strengths, risks, red flags, what would change the view, and data gaps. Results are cached per stock (and per held flag) until the inputs change (new fundamentals or a new scrape); `?refresh=true` forces a new run.
 
-Any OpenAI-compatible endpoint works; configure `llm` in `config/app.json`:
+Any OpenAI-compatible endpoint works; configure the `ai` block in `config/app.json`:
 
 | Setup | `base_url` | `api_key_env` | `model` example |
 |---|---|---|---|
@@ -36,7 +36,7 @@ Any OpenAI-compatible endpoint works; configure `llm` in `config/app.json`:
 | LM Studio (local) | `http://127.0.0.1:1234/v1` | — | the loaded model's id |
 | Ollama (local) | `http://127.0.0.1:11434/v1` | — | `gemma3:27b` |
 
-Keys are read from the environment only. Strict JSON-schema output is used when the model supports it, with automatic fallback to JSON mode for models that don't. The optional scrape-time thesis (`ai.enabled`) uses the same provider.
+Keys are read from the environment only. Strict JSON-schema output is used when the model supports it, with automatic fallback to JSON mode for models that don't. The optional scrape-time thesis (`ai.scrape_thesis.enabled`) uses the same provider. Older configs (`ai.baseUrl`/`ai.enabled`/`ai.top_stock_limit`, or a separate `llm` block) still load and are translated at startup with a warning; `/v1` is appended to a legacy `baseUrl`.
 
 ### Fundamentals (Tapetide, on demand)
 
@@ -74,4 +74,4 @@ To add a source, implement `SourceAdapter` in `src/scrapers/sourceAdapter.js`, i
 
 Run `GET /api/scrape/dry-run` while tuning `config/scraping.json` — it never writes to the database, so it is safe to call repeatedly.
 
-See [`docs/FEATURES.md`](docs/FEATURES.md) for full payloads. The scheduled job runs on `scrape_cron` (daily at 06:00 by default); AI enrichment is off until `ai.enabled` is `true`.
+See [`docs/FEATURES.md`](docs/FEATURES.md) for full payloads. The scheduled job runs on `scrape_cron` (daily at 06:00 by default); the scrape-time AI thesis is off until `ai.scrape_thesis.enabled` is `true`; the on-demand analysis endpoint works whenever the `ai` provider is configured.

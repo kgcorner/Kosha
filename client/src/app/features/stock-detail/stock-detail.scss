@@ -164,6 +164,142 @@
   text-align: right;
 }
 
+.ai {
+  &__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  &__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+  }
+
+  &__wait {
+    font-size: 0.85rem;
+  }
+
+  &__summary {
+    margin: 0.5rem 0 0.75rem;
+    font-size: 1rem;
+    color: var(--text-strong);
+  }
+
+  &__facts {
+    margin: 0 0 0.75rem;
+    display: grid;
+    gap: 0.4rem;
+
+    dt {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    dd {
+      margin: 0;
+    }
+  }
+
+  &__lists {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 0.75rem;
+  }
+
+  &__list {
+    padding: 0.6rem 0.8rem;
+    border-radius: var(--radius-sm);
+    background: var(--surface-muted);
+
+    h3 {
+      margin: 0 0 0.35rem;
+      font-size: 0.85rem;
+      color: var(--text-strong);
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 1.1rem;
+      font-size: 0.875rem;
+    }
+
+    &--good {
+      background: var(--success-soft);
+    }
+
+    &--warn {
+      background: var(--warning-soft);
+    }
+
+    &--bad {
+      background: var(--danger-soft);
+    }
+  }
+
+  &__note,
+  &__meta {
+    font-size: 0.8rem;
+    margin: 0.75rem 0 0;
+  }
+
+  &__disclaimer {
+    margin: 0.35rem 0 0;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-style: italic;
+  }
+}
+
+.held-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.verdict-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.verdict {
+  display: inline-block;
+  padding: 0.25rem 0.8rem;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+
+  &--buy {
+    background: var(--success-soft);
+    color: var(--success);
+  }
+
+  &--sell {
+    background: var(--danger-soft);
+    color: var(--danger);
+  }
+
+  &--hold {
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+  }
+
+  &--ignore {
+    background: var(--surface-muted);
+    color: var(--text-muted);
+  }
+}
+
 .skeleton--title {
   height: 1.6rem;
   width: 40%;

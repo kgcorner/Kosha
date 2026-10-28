@@ -3,10 +3,16 @@
   "database_path": "./data/stocks.sqlite",
   "scrape_cron": "0 6 * * *",
   "ai": {
-    "enabled": false,
-    "baseUrl": "http://127.0.0.1:1234",
-    "model": "ornith-1.5-9b",
-    "top_stock_limit": 20
+    "base_url": "https://openrouter.ai/api/v1",
+    "api_key_env": "OPENROUTER_API_KEY",
+    "model": "google/gemini-2.5-flash",
+    "temperature": 0.2,
+    "max_output_tokens": 4096,
+    "timeout_ms": 120000,
+    "scrape_thesis": {
+      "enabled": false,
+      "top_stock_limit": 20
+    }
   },
   "fundamentals": {
     "enabled": true,
@@ -21,14 +27,5 @@
       "pledge"
     ],
     "timezone": "Asia/Kolkata"
-  },
-  "llm": {
-    "provider": "openai-compatible",
-    "base_url": "https://openrouter.ai/api/v1",
-    "api_key_env": "OPENROUTER_API_KEY",
-    "model": "google/gemini-2.5-flash",
-    "temperature": 0.2,
-    "max_output_tokens": 4096,
-    "timeout_ms": 120000
   }
 }

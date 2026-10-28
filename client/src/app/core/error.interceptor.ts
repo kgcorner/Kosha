@@ -46,7 +46,7 @@ function extractMessage(error: HttpErrorResponse): string {
     }
   }
   if (error.status === 0) {
-    return 'Unable to reach the server. Is the backend running on port 3300?';
+    return 'Unable to reach the server. Is the Kosha backend running (default port 5100)?';
   }
   return `Request failed with status ${error.status}${error.statusText ? ` (${error.statusText})` : ''}.`;
 }

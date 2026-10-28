@@ -4,6 +4,7 @@ import { RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api';
 import { formatTimestamp } from '../../core/format-timestamp';
 import { LoadState } from '../../core/models/load-state';
+import { StockAnalysis } from '../../core/models/stock-analysis';
 import { StockDetail as StockDetailModel } from '../../core/models/stock-detail';
 import { FundamentalsSection, StockFundamentals } from '../../core/models/stock-fundamentals';
 import { DataView } from '../../shared/data-view/data-view';
@@ -49,6 +50,12 @@ export class StockDetail {
   protected readonly fundamentals = signal<StockFundamentals | null>(null);
   protected readonly fundamentalsError = signal<string | null>(null);
 
+  protected readonly analysisState = signal<LoadState>('idle');
+  protected readonly analysis = signal<StockAnalysis | null>(null);
+  protected readonly analysisError = signal<string | null>(null);
+  /** Whether the user owns this stock (HOLD/SELL) — remembered per stock in this browser. */
+  protected readonly held = signal(false);
+
   protected readonly numericId = computed(() => {
     const id = Number(this.stockId());
     return Number.isInteger(id) && id > 0 ? id : null;
@@ -87,6 +94,10 @@ export class StockDetail {
     this.fundamentals.set(null);
     this.fundamentalsState.set('idle');
     this.fundamentalsError.set(null);
+    this.analysis.set(null);
+    this.analysisState.set('idle');
+    this.analysisError.set(null);
+    this.held.set(id === null ? false : readHeld(id));
     if (id === null) {
       this.detail.set(null);
       this.error.set(`“${this.stockId()}” is not a valid stock id.`);
@@ -141,6 +152,56 @@ export class StockDetail {
     });
   }
 
+  protected setHeld(held: boolean): void {
+    const id = this.numericId();
+    this.held.set(held);
+    if (id !== null) {
+      writeHeld(id, held);
+    }
+    // A verdict for the other question (BUY/IGNORE vs HOLD/SELL) no longer applies.
+    if (this.analysis() && this.analysis()?.held !== held) {
+      this.analysis.set(null);
+      this.analysisState.set('idle');
+    }
+  }
+
+  /**
+   * Ask the backend's LLM for a verdict. The backend fetches fundamentals if
+   * needed (same once-per-day rule) and reuses a stored analysis while its
+   * inputs are unchanged; `refresh` forces the model to run again.
+   */
+  protected runAnalysis(refresh = false): void {
+    const id = this.numericId();
+    if (id === null || this.analysisState() === 'loading') {
+      return;
+    }
+    this.analysisState.set('loading');
+    this.analysisError.set(null);
+    this.api.getAnalysis(id, { held: this.held(), refresh }).subscribe({
+      next: (result) => {
+        this.analysis.set(result);
+        this.analysisState.set('success');
+      },
+      error: (error: unknown) => {
+        this.analysisError.set(messageOf(error, 'Unable to run the AI analysis.'));
+        this.analysisState.set('error');
+      },
+    });
+  }
+
+  protected verdictClass(verdict: string): string {
+    switch (verdict) {
+      case 'BUY':
+        return 'verdict--buy';
+      case 'SELL':
+        return 'verdict--sell';
+      case 'HOLD':
+        return 'verdict--hold';
+      default:
+        return 'verdict--ignore';
+    }
+  }
+
   protected weightRange(): string {
     const signal = this.detail()?.fund_signal;
     if (!signal || signal.weight_avg === null || signal.weight_avg === undefined) {
@@ -164,6 +225,29 @@ export class StockDetail {
 
   protected percent(value: number | null | undefined): string {
     return value === null || value === undefined ? '—' : `${formatNumber(value)}%`;
+  }
+}
+
+const HELD_KEY_PREFIX = 'kosha.held.';
+
+/** Browser storage can be unavailable (private mode, blocked); never let it break the page. */
+function readHeld(stockId: number): boolean {
+  try {
+    return localStorage.getItem(`${HELD_KEY_PREFIX}${stockId}`) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeHeld(stockId: number, held: boolean): void {
+  try {
+    if (held) {
+      localStorage.setItem(`${HELD_KEY_PREFIX}${stockId}`, '1');
+    } else {
+      localStorage.removeItem(`${HELD_KEY_PREFIX}${stockId}`);
+    }
+  } catch {
+    /* ignore */
   }
 }
 

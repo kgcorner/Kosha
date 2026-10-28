@@ -26,13 +26,13 @@ const sourceRegistry = createSourceRegistry(scraping);
 // One OpenAI-compatible LLM provider (OpenRouter by default, or a local LM
 // Studio/Ollama server) shared by the on-demand stock analysis and the
 // optional scrape-time thesis.
-const llm = createLlmProvider(appConfig.llm ?? {});
+const llm = createLlmProvider(appConfig.ai);
 console.log("LLM provider:", llm.describe(), llm.configured ? "" : "(not configured — analysis endpoint will report it)");
-const ollamaService = new OllamaService({ ...appConfig.ai, provider: llm });
+const ollamaService = new OllamaService({ provider: llm });
 const aggregationService = new AggregationService({
   repository: repositories.aggregation,
   ollamaService,
-  aiConfiguration: appConfig.ai
+  aiConfiguration: appConfig.ai.scrape_thesis
 });
 const scrapeJob = new ScrapeJob({
   mutualFundScraper: new MutualFundScraper({
