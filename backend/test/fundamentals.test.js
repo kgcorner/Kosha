@@ -77,6 +77,17 @@ test("client surfaces quota, tool errors and missing token as TapetideError", as
   await assert.rejects(toolError.callTool("x"), (error) => error.code === "tool_error" && /Unknown symbol/.test(error.message));
 
   await assert.rejects(new TapetideClient({}).callTool("x"), (error) => error.code === "not_configured");
+
+  const offline = new TapetideClient({
+    token: "t",
+    fetch: async () => {
+      throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ENOTFOUND" } });
+    }
+  });
+  await assert.rejects(
+    offline.callTool("x"),
+    (error) => error.code === "unreachable" && /Could not reach Tapetide at https:\/\/mcp\.tapetide\.com: fetch failed \(ENOTFOUND\)/.test(error.message)
+  );
   assert.equal(parseRpcMessage("garbage"), null);
 });
 

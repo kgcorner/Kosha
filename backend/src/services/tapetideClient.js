@@ -95,7 +95,7 @@ export class TapetideClient {
   }
 
   async post(body, accessToken) {
-    return this.fetch(`${this.baseUrl}/mcp`, {
+    return this.request(`${this.baseUrl}/mcp`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -120,8 +120,20 @@ export class TapetideClient {
     return this.accessToken;
   }
 
+  // Network-level failures (DNS, refused, timeout) become a TapetideError that
+  // names the host and the underlying cause instead of a bare "fetch failed".
+  async request(url, init) {
+    try {
+      return await this.fetch(url, init);
+    } catch (error) {
+      const cause = error?.cause?.code ?? error?.cause?.message ?? error?.name ?? "";
+      const detail = error?.name === "TimeoutError" ? `timed out after ${this.timeoutMs}ms` : `${error.message}${cause && !String(error.message).includes(cause) ? ` (${cause})` : ""}`;
+      throw new TapetideError(`Could not reach Tapetide at ${new URL(url).origin}: ${detail}`, { code: "unreachable" });
+    }
+  }
+
   async exchangeToken() {
-    const response = await this.fetch(`${this.baseUrl}/token`, {
+    const response = await this.request(`${this.baseUrl}/token`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": this.userAgent },
       body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: this.token }),

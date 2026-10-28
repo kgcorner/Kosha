@@ -48,7 +48,7 @@ The fundamentals and analysis endpoints add a machine-readable `code` where usef
 
 ### Environment variables
 
-Secrets are read from the environment only; never put them in config files.
+Secrets are read from the environment only; never put them in config files. The easiest way is a `backend/.env` file (git-ignored; copy `backend/.env.example`), which is loaded at startup. Variables already set in your shell take precedence over the file. `ENV_FILE` points at a different file.
 
 | Variable | Needed for | Notes |
 |---|---|---|
@@ -227,6 +227,7 @@ There is deliberately no way to force a second provider call on the same day.
 |---|---|
 | `not_configured` | `TAPETIDE_TOKEN` is not set (only cached data can be served) |
 | `auth_failed` | Token rejected |
+| `unreachable` | Network problem reaching Tapetide (DNS, refused, timeout); the message names the cause |
 | `rate_limited` | Daily quota or burst limit reached; see `retry_after_seconds` |
 | `symbol_not_found` | No Tapetide symbol matched the stock's ISIN or name |
 | `tool_error` | Tapetide returned an error for that section |

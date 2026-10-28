@@ -1,3 +1,5 @@
+// Must stay the first import: loads backend/.env before anything reads process.env.
+import "./env.js";
 import cron from "node-cron";
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";

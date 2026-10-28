@@ -170,7 +170,7 @@ function pickMatch(results, isin) {
 
 function isFatal(error) {
   return error instanceof TapetideError &&
-    ["rate_limited", "not_configured", "auth_failed", "symbol_not_found"].includes(error.code);
+    ["rate_limited", "not_configured", "auth_failed", "symbol_not_found", "unreachable"].includes(error.code);
 }
 
 function describeError(section, error) {

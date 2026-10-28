@@ -38,6 +38,17 @@ Any OpenAI-compatible endpoint works; configure the `ai` block in `config/app.js
 
 Keys are read from the environment only. Strict JSON-schema output is used when the model supports it, with automatic fallback to JSON mode for models that don't. The optional scrape-time thesis (`ai.scrape_thesis.enabled`) uses the same provider. Older configs (`ai.baseUrl`/`ai.enabled`/`ai.top_stock_limit`, or a separate `llm` block) still load and are translated at startup with a warning; `/v1` is appended to a legacy `baseUrl`.
 
+### Keys (`backend/.env`)
+
+Put your keys in `backend/.env` (copy `backend/.env.example`). The file is git-ignored and loaded automatically at startup, whichever folder you start the server from; the log shows which variable *names* were loaded:
+
+```
+TAPETIDE_TOKEN=tpt_rt_...
+OPENROUTER_API_KEY=sk-or-...
+```
+
+Variables already exported in your shell win over the file. Never put keys in `config/app.json`; it only names the variables (`ai.api_key_env`, `fundamentals.token_env`).
+
 ### Fundamentals (Tapetide, on demand)
 
 Set `TAPETIDE_TOKEN` (personal token from https://tapetide.com/settings/tokens) before `npm start`. The token is read from the environment only; never put it in a config file. Without it the endpoint serves cached data only. Stocks are matched to Tapetide symbols by ISIN (cached in `stocks.symbol`). A stock's first fetch costs ~5 calls (symbol search + 4 sections); each later day ~4; repeat views on the same day cost nothing. The free plan allows 50 calls/day.
