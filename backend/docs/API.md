@@ -13,6 +13,7 @@ Kosha ranks stocks by how many actively managed mutual funds hold them (from off
 | Stocks | [`GET /stocks/leaderboard`](#get-stocksleaderboard) | Consensus ranking, optionally per category |
 | | [`GET /stocks/:id`](#get-stocksid) | Everything the scrape stored about one stock (no external calls) |
 | | [`GET /stocks/:id/fundamentals`](#get-stocksidfundamentals) | Fundamentals, fetched on demand (Tapetide), at most once per stock per day |
+| | [`GET /market`](#get-market) | Market-wide FII/DII flows and market pulse, once per day |
 | | [`GET /stocks/:id/analysis`](#get-stocksidanalysis) | AI verdict (BUY/IGNORE or HOLD/SELL), on demand and cached |
 | | [`GET /stocks/:id/metrics`](#get-stocksidmetrics) | Scraped stock-page metrics (HTML sources only) |
 | Funds & categories | [`GET /funds`](#get-funds) | Tracked funds |
@@ -167,10 +168,14 @@ Fundamentals for one stock plus Kosha's fund signal. **Lazy:** the provider (Tap
 
 | Section | Contents |
 |---|---|
-| `profile` | Quote, market cap, P/E, industry P/E, P/B, ROE, ROCE, debt/equity, growth, pros/cons |
+| `profile` | Quote, market cap, P/E, P/B, ROE, ROCE, debt/equity, growth, pros/cons, **technical indicators** (RSI, moving averages, MACD …) and **analyst consensus ratings** (`include: technicals, ratings`) |
 | `financials` | Quarterly P&L; annual P&L, balance sheet, cash flow, ratios (latest periods) |
 | `shareholding` | Quarterly promoter / FII / DII / public holding |
 | `pledge` | Promoter pledge history and events |
+| `price_history` | One year of daily OHLCV + delivery %. Adds `summary` (returns 1w–1y, distance from 52-week high/low, 50/200-day averages, volume and delivery trends, volatility, max drawdown, weekly closes) and `series` (`[{ date, close, volume }]`, oldest first, for charts) |
+| `forecasts` | Analyst EPS / revenue / EBITDA / price estimates versus actuals |
+
+Stored responses fetched before a section's request changed (e.g. `profile` without technicals) are refreshed on the next calendar day, not immediately, to keep the once-per-day rule.
 
 **Query parameters**
 
@@ -215,6 +220,7 @@ There is deliberately no way to force a second provider call on the same day.
 |---|---|
 | `stock.symbol` | NSE symbol, resolved from the ISIN on first use and stored |
 | `fund_signal` | Overall consensus plus, per category, how many of that category's funds hold the stock |
+| `fundamentals.<section>.summary` / `.series` | Present on `price_history` only (see the table above) |
 | `fundamentals.<section>.data` | The provider's payload for that section, unmodified. Its exact shape is defined by Tapetide. |
 | `fetched_at` | When the stored copy was fetched (UTC) |
 | `cached` | `true` if served from SQLite without calling the provider (it was already fetched today) |
@@ -248,12 +254,35 @@ Example with no token configured (real response):
 
 Other statuses: `404` unknown stock, `400` unknown section, `503` fundamentals disabled (`fundamentals.enabled: false`).
 
-**Quota:** a stock's first fetch costs about 5 Tapetide calls (symbol lookup plus 4 sections); later days cost 4 (the symbol is stored). Repeat views on the same day cost none.
+**Quota:** a stock's first fetch costs about 7 Tapetide calls (symbol lookup plus 6 sections); later days cost 6 (the symbol is stored). Repeat views on the same day cost none. Market-wide data (`/market`) adds 2 calls per day in total, not per stock. On the free plan (50 calls/day) that is roughly 6–7 new stocks a day; Starter (400/day) covers about 60.
 
 ```sh
 curl 'http://localhost:5100/api/stocks/1/fundamentals'
 curl 'http://localhost:5100/api/stocks/1/fundamentals?sections=profile,pledge'
 ```
+
+---
+
+### `GET /market`
+
+Market-wide context shared by every stock, fetched from Tapetide at most **once per calendar day in total** and stored in `market_data`. Used by the AI analysis as background only.
+
+| Key | Tool | Contents |
+|---|---|---|
+| `fii_dii` | `get_fii_dii_detail` | 30 trading days of FII/DII cash flows (₹ Cr), F&O positioning, weekly/monthly/yearly aggregates, streaks |
+| `pulse` | `get_market_pulse` | Today's FII/DII net flows, Nifty 50 valuation, India VIX |
+
+```json
+{
+  "provider": "tapetide",
+  "sections": {
+    "fii_dii": { "data": { "...": "provider payload" }, "fetched_at": "2026-10-28 04:20:00", "provider": "tapetide", "cached": false, "stale": false }
+  },
+  "errors": []
+}
+```
+
+Errors follow the same `{ section, code, message }` shape as `/fundamentals`. `503` when fundamentals are disabled.
 
 ---
 
@@ -279,6 +308,9 @@ AI decision support for one stock. Combines the fund signal with the stock's fun
     "confidence": "medium",
     "summary": "Widely held by small-cap funds with steady profit growth and a valuation below its sector.",
     "fund_consensus": "Held by 22 of 36 tracked small-cap funds at about 2% average weight.",
+    "price_trend": "Trading 1.5% below its 52-week high and above both its 50- and 200-day averages.",
+    "ownership_trend": "FIIs cut their stake from 27.4% to 17.4% over eight quarters while DIIs raised theirs from 33.6% to 48%.",
+    "analyst_view": "not available",
     "valuation": "P/E is below the industry P/E in the data provided.",
     "strengths": ["Broad fund-manager backing", "No promoter pledge"],
     "risks": ["Small-cap price volatility"],
@@ -292,7 +324,9 @@ AI decision support for one stock. Combines the fund signal with the stock's fun
   "inputs": {
     "fund_signal": { "funds_holding": 22, "...": "..." },
     "fundamentals_sections": ["profile", "financials", "shareholding", "pledge"],
-    "stale_sections": ["shareholding"]
+    "market_sections": ["fii_dii", "pulse"],
+    "stale_sections": ["shareholding"],
+    "prompt_chars": 17215
   },
   "errors": [],
   "disclaimer": "Decision support generated by an AI model from public data. Not investment advice."
@@ -305,7 +339,10 @@ AI decision support for one stock. Combines the fund signal with the stock's fun
 | `analysis.confidence` | `low` / `medium` / `high`; the model is told to lower it when data is missing or stale |
 | `analysis.*` lists | Short sentences; the model is told to cite only numbers present in the data |
 | `cached` | `true` if the stored analysis was reused |
-| `inputs` | What the model saw: fund signal, which fundamentals sections were available, which were stale |
+| `analysis.price_trend` / `ownership_trend` / `analyst_view` | Added in prompt v2: price & technicals, institutional/promoter holding trend, analyst consensus. Absent on analyses stored before v2 |
+| `inputs` | What the model saw: fund signal, which fundamentals and market sections were available, which were stale, and the prompt size |
+
+**What the model receives (prompt v2):** the fund signal; the company profile (ratios, growth, technicals, analyst ratings); financial statements; shareholding and pledge; price **statistics computed by Kosha** (never raw daily rows); analyst forecasts; and market-wide FII/DII flows as background. Every time series is sorted oldest → newest and trimmed (8 quarters of shareholding, 6 periods of financials), and each section is size-capped. Changing the prompt version or any input invalidates the stored analysis.
 | `errors` | Fundamentals problems (e.g. no Tapetide token). The analysis still runs on the fund signal alone. |
 
 **Errors**

@@ -111,7 +111,13 @@ const HANDLERS = {
   get_company_profile: (args) => ({ symbol: args.symbol, pe: 9.8, roe: 17.2 }),
   get_financials: { quarterly: [{ period: "Sep 2026", revenue: 1 }] },
   get_shareholding: (args) => ({ type: args.type, promoter: 2.1 }),
-  get_promoter_pledge: { pledged_pct: 0 }
+  get_promoter_pledge: { pledged_pct: 0 },
+  get_price_history: {
+    data: Array.from({ length: 30 }, (_, i) => ({ date: `2026-09-${String(i + 1).padStart(2, "0")}`, close: 100 + i, volume: 1000 }))
+  },
+  get_forecasts: { eps: { fy2027: 16.2 } },
+  get_fii_dii_detail: { fii_net_30d: -1200 },
+  get_market_pulse: { vix: 12.4 }
 };
 
 function setup({ handlers = HANDLERS, now = () => Date.now() } = {}) {
@@ -166,7 +172,7 @@ test("the provider is called at most once per stock per section per calendar day
     const nextDay = await service.getFundamentals(stockId);
     assert.deepEqual(
       client.calls.slice(afterFirst).map((c) => c.name),
-      ["get_company_profile", "get_financials", "get_shareholding", "get_promoter_pledge"]
+      ["get_company_profile", "get_financials", "get_shareholding", "get_promoter_pledge", "get_price_history", "get_forecasts"]
     );
     assert.equal(nextDay.fundamentals.financials.cached, false);
     assert.equal(nextDay.cache_policy.timezone, "Asia/Kolkata");
@@ -274,6 +280,53 @@ test("GET /api/stocks/:id/fundamentals serves data, 404s unknown stocks, 400s ba
     await withServer({ repositories }, async (base) => {
       assert.equal((await fetch(`${base}/api/stocks/${stockId}/fundamentals`)).status, 503);
     });
+  } finally {
+    db.close();
+  }
+});
+
+test("profile asks for technicals and ratings; price history carries a computed summary", async () => {
+  const { db, stockId, client, service } = setup();
+  try {
+    const result = await service.getFundamentals(stockId);
+    const profileCall = client.calls.find((c) => c.name === "get_company_profile");
+    assert.deepEqual(profileCall.args, { include: ["technicals", "ratings"], symbol: "KARURVYSYA" });
+    assert.deepEqual(client.calls.find((c) => c.name === "get_price_history").args, { days: 365, symbol: "KARURVYSYA" });
+    assert.equal(result.fundamentals.price_history.summary.last_close, 129);
+    assert.equal(result.fundamentals.price_history.summary.sessions, 30);
+    assert.equal(result.fundamentals.price_history.series.length, 30);
+    assert.deepEqual(result.fundamentals.price_history.series[0], { date: "2026-09-01", close: 100, volume: 1000 });
+    assert.equal("summary" in result.fundamentals.profile, false);
+  } finally {
+    db.close();
+  }
+});
+
+test("market context is fetched once per day for all stocks and falls back to stored data", async () => {
+  let clock = Date.now();
+  let failing = false;
+  const handlers = {
+    ...HANDLERS,
+    get_fii_dii_detail: () => {
+      if (failing) throw new TapetideError("down", { code: "unreachable" });
+      return { fii_net_30d: -1200 };
+    }
+  };
+  const { db, client, service } = setup({ handlers, now: () => clock });
+  try {
+    const first = await service.getMarketContext();
+    assert.deepEqual(first.sections.fii_dii.data, { fii_net_30d: -1200 });
+    assert.deepEqual(first.sections.pulse.data, { vix: 12.4 });
+    const calls = client.calls.length;
+    await service.getMarketContext();
+    assert.equal(client.calls.length, calls, "same day: served from market_data");
+
+    clock += 24 * 60 * 60 * 1000;
+    failing = true;
+    const nextDay = await service.getMarketContext();
+    assert.equal(nextDay.errors[0].code, "unreachable");
+    assert.equal(nextDay.sections.fii_dii.stale, true);
+    assert.equal(nextDay.sections.pulse.stale, true, "network failure stops further calls and serves stored copies");
   } finally {
     db.close();
   }

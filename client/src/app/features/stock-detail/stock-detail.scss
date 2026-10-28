@@ -300,6 +300,15 @@
   }
 }
 
+.fsection__raw {
+  summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-size: 0.85rem;
+    margin-bottom: 0.4rem;
+  }
+}
+
 .skeleton--title {
   height: 1.6rem;
   width: 40%;

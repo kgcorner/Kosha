@@ -24,7 +24,9 @@
       "profile",
       "financials",
       "shareholding",
-      "pledge"
+      "pledge",
+      "price_history",
+      "forecasts"
     ],
     "timezone": "Asia/Kolkata"
   }

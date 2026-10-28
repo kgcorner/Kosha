@@ -225,6 +225,24 @@
                 <dd>{{ a.analysis.fund_consensus }}</dd>
               </div>
             }
+            @if (a.analysis.price_trend) {
+              <div>
+                <dt>Price trend</dt>
+                <dd>{{ a.analysis.price_trend }}</dd>
+              </div>
+            }
+            @if (a.analysis.ownership_trend) {
+              <div>
+                <dt>Ownership trend</dt>
+                <dd>{{ a.analysis.ownership_trend }}</dd>
+              </div>
+            }
+            @if (a.analysis.analyst_view) {
+              <div>
+                <dt>Analyst view</dt>
+                <dd>{{ a.analysis.analyst_view }}</dd>
+              </div>
+            }
             @if (a.analysis.valuation) {
               <div>
                 <dt>Valuation</dt>
@@ -340,6 +358,113 @@
                   : 'All sections served from Kosha’s stored copy'
               }}.
             </p>
+            @if (tiles().length > 0) {
+              <div class="tiles">
+                @for (tile of tiles(); track tile.label) {
+                  <div class="tile">
+                    <span class="tile__label">{{ tile.label }}</span>
+                    <span class="tile__value">{{ tile.value }}</span>
+                    @if (tile.hint) {
+                      <span class="tile__hint">{{ tile.hint }}</span>
+                    }
+                  </div>
+                }
+              </div>
+            }
+
+            @if (range(); as r) {
+              <div
+                class="range"
+                role="img"
+                [attr.aria-label]="
+                  'Price ' +
+                  money(r.price) +
+                  ' within 52-week range ' +
+                  money(r.low) +
+                  ' to ' +
+                  money(r.high)
+                "
+              >
+                <span class="range__end">52w low {{ money(r.low) }}</span>
+                <div class="range__track">
+                  <span class="range__marker" [style.left.%]="r.pct"></span>
+                </div>
+                <span class="range__end">52w high {{ money(r.high) }}</span>
+              </div>
+            }
+
+            <div class="charts">
+              @if (priceChart(); as c) {
+                <div class="chart-card">
+                  <h3 class="chart-card__title">Price, last year</h3>
+                  <app-line-chart
+                    [labels]="c.labels"
+                    [series]="c.series"
+                    [format]="money"
+                    [xTick]="monthLabel"
+                    [xTitle]="dayLabel"
+                    caption="Daily close with 50- and 200-day moving averages"
+                  />
+                  @if (priceStats().length > 0) {
+                    <dl class="mini-stats">
+                      @for (stat of priceStats(); track stat.label) {
+                        <div>
+                          <dt>{{ stat.label }}</dt>
+                          <dd>{{ stat.value }}</dd>
+                        </div>
+                      }
+                    </dl>
+                  }
+                </div>
+              }
+              @if (quarterlyChart(); as c) {
+                <div class="chart-card">
+                  <h3 class="chart-card__title">Quarterly results (₹ Cr)</h3>
+                  <app-column-chart
+                    [labels]="c.labels"
+                    [series]="c.series"
+                    [format]="crore"
+                    caption="Revenue and net profit by quarter"
+                  />
+                </div>
+              }
+              @if (shareholdingChart(); as c) {
+                <div class="chart-card">
+                  <h3 class="chart-card__title">Who owns it (% of shares)</h3>
+                  <app-line-chart
+                    [labels]="c.labels"
+                    [series]="c.series"
+                    [format]="pct"
+                    [zeroBased]="true"
+                    caption="Shareholding by quarter"
+                  />
+                  @if (c.noPromoter) {
+                    <p class="chart-card__note">
+                      No promoter group (common for widely held companies such as many banks).
+                    </p>
+                  }
+                </div>
+              }
+              @if (pledge(); as p) {
+                <div class="chart-card">
+                  <h3 class="chart-card__title">Promoter pledge (% of promoter holding)</h3>
+                  @if (p.allZero) {
+                    <p class="chart-card__empty">
+                      No promoter shares pledged in the last {{ p.periods.length }} quarters.
+                    </p>
+                  } @else {
+                    <app-line-chart
+                      [labels]="p.periods"
+                      [series]="[{ name: 'Pledged', values: p.values, slot: 2 }]"
+                      [format]="pct"
+                      [zeroBased]="true"
+                      caption="Higher or rising pledges are a governance red flag"
+                    />
+                  }
+                </div>
+              }
+            </div>
+
             @for (entry of sections(); track entry.key) {
               <article class="fsection">
                 <header class="fsection__head">
@@ -357,7 +482,14 @@
                     >
                   </span>
                 </header>
-                <app-data-view [value]="entry.section.data" />
+                @if (charted().has(entry.key)) {
+                  <details class="fsection__raw">
+                    <summary>Show data</summary>
+                    <app-data-view [value]="entry.section.summary ?? entry.section.data" />
+                  </details>
+                } @else {
+                  <app-data-view [value]="entry.section.summary ?? entry.section.data" />
+                }
               </article>
             }
           }

@@ -116,6 +116,15 @@ export function createApiRouter({ repositories, scrapeJob, dryRunService, fundam
     }
   });
 
+  // Market-wide context (FII/DII cash flows, market pulse) shared by every
+  // stock; fetched from the provider at most once per calendar day.
+  router.get("/market", (_request, response, next) => {
+    if (!fundamentalsService) {
+      return response.status(503).json({ error: "Fundamentals provider is not configured" });
+    }
+    fundamentalsService.getMarketContext().then((result) => response.json(result)).catch(next);
+  });
+
   router.get("/funds", (_request, response, next) => {
     try {
       response.json(repositories.funds.list());

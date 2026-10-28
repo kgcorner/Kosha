@@ -1,0 +1,86 @@
+<figure class="chart">
+  @if (series().length > 1) {
+    <ul class="chart__legend">
+      @for (s of series(); track s.name) {
+        <li><span [class]="'key key--box slot-' + s.slot"></span>{{ s.name }}</li>
+      }
+    </ul>
+  }
+  <div class="chart__plot">
+    <svg
+      [attr.viewBox]="'0 0 ' + widthPx() + ' ' + height()"
+      role="img"
+      tabindex="0"
+      [attr.aria-label]="summary()"
+      (pointerleave)="active.set(null)"
+      (keydown)="onKey($event)"
+      (blur)="active.set(null)"
+    >
+      @for (tick of ticks(); track tick) {
+        <line
+          [class]="tick === 0 ? 'grid grid--base' : 'grid'"
+          [attr.x1]="pad.left"
+          [attr.x2]="widthPx() - pad.right"
+          [attr.y1]="y(tick)"
+          [attr.y2]="y(tick)"
+        />
+        <text class="axis axis--y" [attr.x]="pad.left - 6" [attr.y]="y(tick)" dy="0.32em">
+          {{ format()(tick) }}
+        </text>
+      }
+      @if (readout(); as r) {
+        <rect
+          class="band-highlight"
+          [attr.x]="bandLeft(active()!)"
+          [attr.y]="pad.top"
+          [attr.width]="bandWidth()"
+          [attr.height]="height() - pad.top - pad.bottom"
+        />
+      }
+      @for (bar of bars(); track bar.key) {
+        <path [class]="'column slot-' + bar.slot" [attr.d]="bar.d" />
+      }
+      @for (label of labels(); track $index) {
+        @if (showLabel($index)) {
+          <text
+            class="axis axis--x"
+            [attr.x]="center($index)"
+            [attr.y]="height() - 6"
+            text-anchor="middle"
+          >
+            {{ label }}
+          </text>
+        }
+        <rect
+          class="hit"
+          [attr.x]="bandLeft($index)"
+          [attr.y]="pad.top"
+          [attr.width]="bandWidth()"
+          [attr.height]="height() - pad.top - pad.bottom"
+          (pointerenter)="active.set($index)"
+          (pointerdown)="active.set($index)"
+        />
+      }
+    </svg>
+    @if (readout(); as r) {
+      <div
+        class="tooltip"
+        [style.left]="tooltipLeft(r.x)"
+        [class.tooltip--left]="r.x > widthPx() * 0.6"
+        role="status"
+      >
+        <div class="tooltip__title">{{ r.label }}</div>
+        @for (row of r.rows; track row.name) {
+          <div class="tooltip__row">
+            <span [class]="'key key--box slot-' + row.slot"></span>
+            <strong>{{ display(row.value) }}</strong>
+            <span class="tooltip__name">{{ row.name }}</span>
+          </div>
+        }
+      </div>
+    }
+  </div>
+  @if (caption()) {
+    <figcaption class="chart__caption">{{ caption() }}</figcaption>
+  }
+</figure>

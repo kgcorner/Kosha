@@ -7,6 +7,19 @@ import { LoadState } from '../../core/models/load-state';
 import { StockAnalysis } from '../../core/models/stock-analysis';
 import { StockDetail as StockDetailModel } from '../../core/models/stock-detail';
 import { FundamentalsSection, StockFundamentals } from '../../core/models/stock-fundamentals';
+import {
+  dayLabel,
+  findPeriodTable,
+  fmt,
+  monthLabel,
+  movingAverage,
+  normalizePeriodTable,
+  pledgeSeries,
+  profileTiles,
+  rangePosition,
+} from '../../shared/charts/chart-data';
+import { ColumnChart, ColumnSeries } from '../../shared/charts/column-chart';
+import { LineChart, LineSeries } from '../../shared/charts/line-chart';
 import { DataView } from '../../shared/data-view/data-view';
 
 /** Display order and labels for fundamentals sections (unknown ones go last). */
@@ -19,6 +32,20 @@ export const FUNDAMENTALS_SECTIONS: ReadonlyArray<{ key: string; title: string; 
     hint: 'Promoter, FII, DII and public holding by quarter',
   },
   { key: 'pledge', title: 'Promoter pledge', hint: 'Share pledges by promoters' },
+  {
+    key: 'price_history',
+    title: 'Price history',
+    hint: 'One year of daily prices (statistics computed by Kosha)',
+  },
+  { key: 'forecasts', title: 'Analyst forecasts', hint: 'Consensus estimates versus actuals' },
+];
+
+/** Shareholding rows in a fixed order so each holder keeps its colour (slot). */
+const HOLDER_SLOTS: ReadonlyArray<{ row: string; name: string; slot: 1 | 2 | 3 | 4 }> = [
+  { row: 'Promoters', name: 'Promoters', slot: 1 },
+  { row: 'FIIs', name: 'FIIs', slot: 2 },
+  { row: 'DIIs', name: 'DIIs', slot: 3 },
+  { row: 'Public', name: 'Public', slot: 4 },
 ];
 
 /**
@@ -30,7 +57,7 @@ export const FUNDAMENTALS_SECTIONS: ReadonlyArray<{ key: string; title: string; 
  */
 @Component({
   selector: 'app-stock-detail',
-  imports: [RouterLink, DataView],
+  imports: [RouterLink, DataView, LineChart, ColumnChart],
   templateUrl: './stock-detail.html',
   styleUrl: './stock-detail.scss',
 })
@@ -82,6 +109,107 @@ export class StockDetail {
       .filter((key) => !FUNDAMENTALS_SECTIONS.some((section) => section.key === key) && data[key])
       .map((key) => ({ key, title: key, hint: '', section: data[key] as FundamentalsSection }));
     return [...known, ...extra];
+  });
+
+  private section(key: string): FundamentalsSection | null {
+    return (this.fundamentals()?.fundamentals[key] as FundamentalsSection | undefined) ?? null;
+  }
+
+  protected readonly money = (value: number) => `₹${fmt(value)}`;
+  protected readonly crore = (value: number) => `₹${fmt(value, 0)} Cr`;
+  protected readonly pct = (value: number) => `${fmt(value)}%`;
+  protected readonly monthLabel = monthLabel;
+  protected readonly dayLabel = dayLabel;
+
+  protected readonly tiles = computed(() => profileTiles(this.section('profile')?.data));
+  protected readonly range = computed(() => rangePosition(this.section('profile')?.data));
+
+  /** Close with 50/200-day moving averages, from the backend's price series. */
+  protected readonly priceChart = computed(() => {
+    const points = this.section('price_history')?.series ?? [];
+    if (points.length < 2) return null;
+    const closes = points.map((point) => point.close);
+    const series: LineSeries[] = [{ name: 'Close', values: closes, slot: 1 }];
+    if (closes.length >= 50)
+      series.push({ name: '50-day avg', values: movingAverage(closes, 50), slot: 2 });
+    if (closes.length >= 200)
+      series.push({ name: '200-day avg', values: movingAverage(closes, 200), slot: 3 });
+    return { labels: points.map((point) => point.date), series };
+  });
+
+  /** Latest 8 quarters of revenue and net profit (₹ Cr). */
+  protected readonly quarterlyChart = computed(() => {
+    const table = normalizePeriodTable(
+      findPeriodTable(this.section('financials')?.data, 'quarterly'),
+      8,
+    );
+    if (!table) return null;
+    const revenue = table.rows['Revenue'] ?? table.rows['Sales'] ?? null;
+    const profit = table.rows['Net Profit'] ?? null;
+    const series: ColumnSeries[] = [];
+    if (revenue) series.push({ name: 'Revenue', values: revenue, slot: 1 });
+    if (profit) series.push({ name: 'Net profit', values: profit, slot: 2 });
+    return series.length > 0 ? { labels: table.periods, series } : null;
+  });
+
+  /** Latest 12 quarters of holder percentages; holders that are always 0 are left out. */
+  protected readonly shareholdingChart = computed(() => {
+    const table = normalizePeriodTable(findPeriodTable(this.section('shareholding')?.data), 12);
+    if (!table) return null;
+    const series: LineSeries[] = HOLDER_SLOTS.filter(({ row }) =>
+      (table.rows[row] ?? []).some((value) => value !== null && value !== 0),
+    ).map(({ row, name, slot }) => ({ name, values: table.rows[row], slot }));
+    const noPromoter = (table.rows['Promoters'] ?? []).every(
+      (value) => value === null || value === 0,
+    );
+    return series.length > 0 ? { labels: table.periods, series, noPromoter } : null;
+  });
+
+  protected readonly pledge = computed(() => {
+    const data = pledgeSeries(this.section('pledge')?.data);
+    if (!data) return null;
+    return { ...data, allZero: data.values.every((value) => value === 0) };
+  });
+
+  /** Sections that have a chart: their raw data starts collapsed under "Show data". */
+  protected readonly charted = computed(() => {
+    const keys = new Set<string>();
+    if (this.tiles().length > 0) keys.add('profile');
+    if (this.priceChart()) keys.add('price_history');
+    if (this.quarterlyChart()) keys.add('financials');
+    if (this.shareholdingChart()) keys.add('shareholding');
+    if (this.pledge()) keys.add('pledge');
+    return keys;
+  });
+
+  protected readonly priceStats = computed(() => {
+    const summary = this.section('price_history')?.summary as
+      Record<string, unknown> | null | undefined;
+    if (!summary) return [];
+    const returns = (summary['return_pct'] ?? {}) as Record<string, number | null>;
+    const signed = (value: unknown) =>
+      typeof value === 'number' ? `${value > 0 ? '+' : ''}${fmt(value)}%` : null;
+    return [
+      { label: '1 month', value: signed(returns['1m']) },
+      { label: '3 months', value: signed(returns['3m']) },
+      { label: '1 year', value: signed(returns['1y']) },
+      { label: 'Below 52w high', value: signed(summary['pct_below_52w_high']) },
+      {
+        label: 'Volatility (1y)',
+        value:
+          typeof summary['volatility_annualized_pct'] === 'number'
+            ? `${fmt(summary['volatility_annualized_pct'] as number)}%`
+            : null,
+      },
+      { label: 'Max drawdown (1y)', value: signed(summary['max_drawdown_1y_pct']) },
+      {
+        label: 'Delivery % (20d)',
+        value:
+          typeof summary['avg_delivery_pct_20d'] === 'number'
+            ? `${fmt(summary['avg_delivery_pct_20d'] as number)}%`
+            : null,
+      },
+    ].filter((stat): stat is { label: string; value: string } => stat.value !== null);
   });
 
   protected readonly fetchedFromProvider = computed(
