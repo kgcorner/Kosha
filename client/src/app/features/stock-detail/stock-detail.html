@@ -1,0 +1,249 @@
+<a class="back-link" routerLink="/leaderboard">← Leaderboard</a>
+
+@switch (state()) {
+  @case ('loading') {
+    <div class="card" aria-busy="true">
+      <span class="skeleton skeleton--title"></span>
+      <span class="skeleton"></span>
+      <span class="skeleton"></span>
+    </div>
+  }
+
+  @case ('error') {
+    <section class="card state state--error" role="alert">
+      <p class="state__title">Couldn’t load this stock</p>
+      <p class="state__message">{{ error() }}</p>
+      @if (numericId() !== null) {
+        <button type="button" class="btn btn--primary" (click)="load()">Retry</button>
+      }
+    </section>
+  }
+
+  @default {
+    @if (detail(); as d) {
+      <header class="stock-header">
+        <h1 class="page-heading">{{ d.stock.name }}</h1>
+        <div class="stock-header__meta">
+          @if (d.stock.symbol) {
+            <span class="badge">NSE: {{ d.stock.symbol }}</span>
+          }
+          @if (d.stock.isin) {
+            <span class="badge badge--muted">ISIN {{ d.stock.isin }}</span>
+          }
+          @if (d.stock.sector) {
+            <span class="badge badge--muted">{{ d.stock.sector }}</span>
+          }
+        </div>
+      </header>
+
+      <section class="stats" aria-label="Fund holding summary">
+        <div class="stat card">
+          <span class="stat__label">Funds holding</span>
+          <span class="stat__value">{{ d.totals.funds_holding }}</span>
+        </div>
+        <div class="stat card">
+          <span class="stat__label">Overall rank</span>
+          <span class="stat__value">{{ d.fund_signal.rank ?? '—' }}</span>
+        </div>
+        <div class="stat card">
+          <span class="stat__label">Weight per fund (avg · range)</span>
+          <span class="stat__value stat__value--sm">{{ weightRange() }}</span>
+        </div>
+        <div class="stat card">
+          <span class="stat__label">Held by funds (₹ Cr)</span>
+          <span class="stat__value">{{ number(d.totals.total_market_value_cr, 0) }}</span>
+        </div>
+        <div class="stat card">
+          <span class="stat__label">Shares held</span>
+          <span class="stat__value stat__value--sm">{{ number(d.totals.total_quantity, 0) }}</span>
+        </div>
+        <div class="stat card">
+          <span class="stat__label">Disclosure as of</span>
+          <span class="stat__value stat__value--sm">{{ d.totals.latest_as_of ?? '—' }}</span>
+        </div>
+      </section>
+
+      @if (d.fund_signal.categories.length > 0) {
+        <section class="card section">
+          <h2 class="section__title">Category coverage</h2>
+          <p class="section__hint">How many of each category's tracked funds hold this stock.</p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th scope="col">Category</th>
+                  <th scope="col" class="num">Funds holding</th>
+                  <th scope="col">Coverage</th>
+                  <th scope="col" class="num">Avg weight</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (c of d.fund_signal.categories; track c.category) {
+                  <tr>
+                    <td>{{ c.category }}</td>
+                    <td class="num">{{ c.funds_holding }} / {{ c.funds_in_category }}</td>
+                    <td>
+                      <div
+                        class="bar"
+                        role="img"
+                        [attr.aria-label]="
+                          coverage(c.funds_holding, c.funds_in_category) + '% of funds'
+                        "
+                      >
+                        <span
+                          class="bar__fill"
+                          [style.width.%]="coverage(c.funds_holding, c.funds_in_category)"
+                        ></span>
+                      </div>
+                      <span class="bar__label"
+                        >{{ coverage(c.funds_holding, c.funds_in_category) }}%</span
+                      >
+                    </td>
+                    <td class="num">{{ percent(c.weight_avg) }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </section>
+      }
+
+      @if (d.recent_changes.length > 0) {
+        <section class="card section">
+          <h2 class="section__title">Recent category changes</h2>
+          <ul class="changes">
+            @for (change of d.recent_changes; track change.run_id + change.category) {
+              <li>
+                <span
+                  class="badge"
+                  [class.badge--sell]="change.change_type === 'removed'"
+                  [class.badge--buy]="change.change_type === 'added'"
+                >
+                  {{ change.change_type === 'removed' ? 'Removed from' : 'Added to' }}
+                </span>
+                {{ change.category }}
+                <span class="text-muted">· {{ timestamp(change.run_at) }}</span>
+              </li>
+            }
+          </ul>
+        </section>
+      }
+
+      <section class="card section">
+        <h2 class="section__title">Funds holding this stock ({{ d.holdings.length }})</h2>
+        @if (d.holdings.length === 0) {
+          <p class="text-muted">No tracked fund holds this stock in the latest scrape.</p>
+        } @else {
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th scope="col">Fund</th>
+                  <th scope="col">Category</th>
+                  <th scope="col" class="num">Weight (% NAV)</th>
+                  <th scope="col" class="num">Shares</th>
+                  <th scope="col" class="num">Value (₹ Cr)</th>
+                  <th scope="col">As of</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (h of d.holdings; track h.fund_id) {
+                  <tr>
+                    <td>{{ h.fund_name }}</td>
+                    <td class="text-muted">{{ h.category ?? '—' }}</td>
+                    <td class="num">{{ percent(h.weight_percentage) }}</td>
+                    <td class="num">{{ number(h.quantity, 0) }}</td>
+                    <td class="num">{{ number(h.market_value_cr) }}</td>
+                    <td class="text-muted">{{ h.as_of ?? '—' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </section>
+
+      <section class="card section fundamentals" aria-live="polite">
+        <div class="fundamentals__head">
+          <div>
+            <h2 class="section__title">Fundamentals</h2>
+            <p class="section__hint">
+              Fetched on request from the data provider and stored by Kosha. The provider is called
+              at most once per stock per day; fetching again today returns the stored copy.
+              @if (lastFetched() && !fundamentals()) {
+                <br />Last fetched {{ timestamp(lastFetched()) }}.
+              }
+            </p>
+          </div>
+          <button
+            type="button"
+            class="btn btn--primary"
+            [disabled]="fundamentalsState() === 'loading'"
+            (click)="fetchFundamentals()"
+          >
+            @if (fundamentalsState() === 'loading') {
+              <span class="spinner" aria-hidden="true"></span> Fetching…
+            } @else if (fundamentals()) {
+              Fetch again
+            } @else {
+              Fetch fundamentals
+            }
+          </button>
+        </div>
+
+        @if (fundamentalsState() === 'error') {
+          <div class="state state--error" role="alert">
+            <p class="state__message">{{ fundamentalsError() }}</p>
+          </div>
+        }
+
+        @if (fundamentals(); as f) {
+          @if (f.errors.length > 0) {
+            <ul class="fundamentals__errors" role="alert">
+              @for (e of f.errors; track e.section + e.message) {
+                <li>
+                  <strong>{{ e.section }}:</strong> {{ e.message }}
+                  @if (e.retry_after_seconds) {
+                    <span class="text-muted">(retry in {{ e.retry_after_seconds }}s)</span>
+                  }
+                </li>
+              }
+            </ul>
+          }
+
+          @if (sections().length === 0) {
+            <p class="text-muted">No fundamentals available for this stock yet.</p>
+          } @else {
+            <p class="fundamentals__note text-muted">
+              {{
+                fetchedFromProvider() > 0
+                  ? fetchedFromProvider() + ' section(s) fetched from ' + f.provider + ' just now'
+                  : 'All sections served from Kosha’s stored copy'
+              }}.
+            </p>
+            @for (entry of sections(); track entry.key) {
+              <article class="fsection">
+                <header class="fsection__head">
+                  <h3 class="fsection__title">{{ entry.title }}</h3>
+                  @if (entry.hint) {
+                    <span class="text-muted fsection__hint">{{ entry.hint }}</span>
+                  }
+                  <span class="fsection__meta">
+                    @if (entry.section.stale) {
+                      <span class="badge badge--sell">Stale</span>
+                    }
+                    <span class="badge badge--muted"
+                      >{{ entry.section.cached ? 'Stored' : 'Fresh' }} ·
+                      {{ timestamp(entry.section.fetched_at) }}</span
+                    >
+                  </span>
+                </header>
+                <app-data-view [value]="entry.section.data" />
+              </article>
+            }
+          }
+        }
+      </section>
+    }
+  }
+}

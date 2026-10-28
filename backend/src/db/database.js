@@ -154,6 +154,13 @@ export function createDatabase(databasePath) {
   ensureColumn(db, "stock_aggregations", "weight_min", "REAL");
   ensureColumn(db, "stock_aggregations", "weight_max", "REAL");
   makeWeightNullable(db);
+  // Extra per-holding facts from richer sources (AMC disclosures): shares held,
+  // market value and disclosure date. Added after makeWeightNullable, which may
+  // rebuild fund_holdings with the original column set.
+  ensureColumn(db, "fund_holdings", "quantity", "REAL");
+  ensureColumn(db, "fund_holdings", "market_value_cr", "REAL");
+  ensureColumn(db, "fund_holdings", "as_of", "TEXT");
+  ensureColumn(db, "stocks", "sector", "TEXT");
   backfillWeightStats(db);
   return db;
 }

@@ -6,6 +6,8 @@ import { CategoryChanges } from './models/category-changes';
 import { Fund } from './models/fund';
 import { LeaderboardRow } from './models/leaderboard-row';
 import { ScrapeJob } from './models/scrape-job';
+import { StockDetail } from './models/stock-detail';
+import { FundamentalsSectionName, StockFundamentals } from './models/stock-fundamentals';
 
 /** Base path for the backend API. Relative so the dev proxy / reverse proxy owns the host. */
 export const API_BASE_PATH = '/api';
@@ -40,6 +42,28 @@ export class ApiService {
       params = params.set('category', query.category);
     }
     return this.http.get<LeaderboardRow[]>(`${this.basePath}/stocks/leaderboard`, { params });
+  }
+
+  /** Everything the scrape stored about one stock (no external calls). */
+  getStock(stockId: number): Observable<StockDetail> {
+    return this.http.get<StockDetail>(`${this.basePath}/stocks/${stockId}`);
+  }
+
+  /**
+   * Stock fundamentals. The backend calls its provider (Tapetide) at most once
+   * per stock per section per day and serves stored data otherwise.
+   */
+  getFundamentals(
+    stockId: number,
+    sections?: FundamentalsSectionName[],
+  ): Observable<StockFundamentals> {
+    let params = new HttpParams();
+    if (sections && sections.length > 0) {
+      params = params.set('sections', sections.join(','));
+    }
+    return this.http.get<StockFundamentals>(`${this.basePath}/stocks/${stockId}/fundamentals`, {
+      params,
+    });
   }
 
   getFunds(): Observable<Fund[]> {

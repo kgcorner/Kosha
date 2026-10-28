@@ -4,14 +4,15 @@ Kosha ranks stocks by how many actively managed mutual funds hold them (from off
 
 - **Base URL:** `http://localhost:5100/api` (port from `config/app.json` → `port`, or the `PORT` env var)
 - **Format:** JSON request and response bodies. No authentication; the API is meant to run on your own machine.
-- **Timestamps:** SQLite UTC, `YYYY-MM-DD HH:MM:SS`.
+- **Timestamps:** UTC, `YYYY-MM-DD HH:MM:SS` (SQLite `CURRENT_TIMESTAMP`, no zone marker). Convert to local time for display.
 
 ## Contents
 
 | Area | Method & path | Purpose |
 |---|---|---|
 | Stocks | [`GET /stocks/leaderboard`](#get-stocksleaderboard) | Consensus ranking, optionally per category |
-| | [`GET /stocks/:id/fundamentals`](#get-stocksidfundamentals) | Fundamentals, fetched on demand (Tapetide) and cached |
+| | [`GET /stocks/:id`](#get-stocksid) | Everything the scrape stored about one stock (no external calls) |
+| | [`GET /stocks/:id/fundamentals`](#get-stocksidfundamentals) | Fundamentals, fetched on demand (Tapetide), at most once per stock per day |
 | | [`GET /stocks/:id/analysis`](#get-stocksidanalysis) | AI verdict (BUY/IGNORE or HOLD/SELL), on demand and cached |
 | | [`GET /stocks/:id/metrics`](#get-stocksidmetrics) | Scraped stock-page metrics (HTML sources only) |
 | Funds & categories | [`GET /funds`](#get-funds) | Tracked funds |
@@ -116,25 +117,68 @@ curl 'http://localhost:5100/api/stocks/leaderboard?category=Small%20Cap&limit=10
 
 ---
 
+### `GET /stocks/:id`
+
+Everything the scrape stored about one stock, for a detail page. Reads only Kosha's database; never calls an external service.
+
+**Response `200`**
+
+```json
+{
+  "stock": { "id": 419, "name": "KARUR VYSYA BANK LTD.", "isin": "INE036D01028", "symbol": "KARURVYSYA", "sector": "Banks", "url": null },
+  "totals": { "funds_holding": 76, "total_quantity": 412345678, "total_market_value_cr": 9950.4, "latest_as_of": "2026-09-30" },
+  "holdings": [
+    { "fund_id": 12, "fund_name": "Example Small Cap Fund", "category": "Small Cap", "weight_percentage": 3.56, "quantity": 12000000, "market_value_cr": 289.4, "as_of": "2026-09-30" }
+  ],
+  "recent_changes": [
+    { "category": "Small Cap", "change_type": "added", "run_at": "2026-10-27 15:55:02", "run_id": 1 }
+  ],
+  "fundamentals_cached": [ { "section": "profile", "fetched_at": "2026-10-28 03:40:12" } ],
+  "fund_signal": {
+    "funds_holding": 76, "rank": 2, "weight_avg": 1.95, "weight_min": 0.13, "weight_max": 3.56,
+    "categories": [ { "category": "Small Cap", "funds_holding": 22, "funds_in_category": 36, "weight_avg": 1.95 } ]
+  }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `stock.sector` | Industry as disclosed by the first fund seen holding it |
+| `stock.symbol` | NSE symbol; `null` until fundamentals have been fetched once |
+| `totals` | Distinct holding funds; shares and market value (₹ crore) summed across them; latest disclosure date |
+| `holdings` | One row per holding fund, highest weight first. `quantity`, `market_value_cr` and `as_of` are `null` for sources that don't publish them (and for data scraped before these columns existed, until the next scrape) |
+| `recent_changes` | Category add/remove events for this stock, newest run first (max 50) |
+| `fundamentals_cached` | Fundamentals sections already stored, with fetch time; empty if never fetched |
+| `fund_signal` | Same structure as in [`/fundamentals`](#get-stocksidfundamentals) |
+
+`404` for an unknown or non-numeric id.
+
+```sh
+curl 'http://localhost:5100/api/stocks/419'
+```
+
+---
+
 ### `GET /stocks/:id/fundamentals`
 
-Fundamentals for one stock plus Kosha's fund signal. **Lazy:** the provider (Tapetide) is called only when this endpoint is requested, never by the scrape job. Each section is cached separately in SQLite.
+Fundamentals for one stock plus Kosha's fund signal. **Lazy:** the provider (Tapetide) is called only when this endpoint is requested, never by the scrape job.
 
-| Section | Contents | Cache TTL (default) |
-|---|---|---|
-| `profile` | Quote, market cap, P/E, industry P/E, P/B, ROE, ROCE, debt/equity, growth, pros/cons | 24 hours |
-| `financials` | Quarterly P&L; annual P&L, balance sheet, cash flow, ratios (latest periods) | 30 days |
-| `shareholding` | Quarterly promoter / FII / DII / public holding | 30 days |
-| `pledge` | Promoter pledge history and events | 30 days |
+**Once per day:** every provider response is stored in SQLite. A section is fetched from the provider only if its stored copy was fetched on an earlier calendar day (timezone `fundamentals.timezone`, default `Asia/Kolkata`). Any further request that day, for any client, is served from the database, so each stock costs at most one provider call per section per day.
 
-TTLs are set in `config/app.json` → `fundamentals.ttl_hours`.
+| Section | Contents |
+|---|---|
+| `profile` | Quote, market cap, P/E, industry P/E, P/B, ROE, ROCE, debt/equity, growth, pros/cons |
+| `financials` | Quarterly P&L; annual P&L, balance sheet, cash flow, ratios (latest periods) |
+| `shareholding` | Quarterly promoter / FII / DII / public holding |
+| `pledge` | Promoter pledge history and events |
 
 **Query parameters**
 
 | Name | Type | Default | Notes |
 |---|---|---|---|
 | `sections` | comma list | all four | e.g. `profile,pledge`. Unknown names → `400`. |
-| `refresh` | boolean | `false` | `true` ignores the cache and refetches the requested sections |
+
+There is deliberately no way to force a second provider call on the same day.
 
 **Response `200`**
 
@@ -162,6 +206,7 @@ TTLs are set in `config/app.json` → `fundamentals.ttl_hours`.
       "stale": false
     }
   },
+  "cache_policy": { "rule": "one provider call per stock per section per calendar day", "timezone": "Asia/Kolkata", "today": "2026-10-28" },
   "errors": []
 }
 ```
@@ -171,11 +216,12 @@ TTLs are set in `config/app.json` → `fundamentals.ttl_hours`.
 | `stock.symbol` | NSE symbol, resolved from the ISIN on first use and stored |
 | `fund_signal` | Overall consensus plus, per category, how many of that category's funds hold the stock |
 | `fundamentals.<section>.data` | The provider's payload for that section, unmodified. Its exact shape is defined by Tapetide. |
-| `cached` | `true` if served from SQLite without calling the provider |
-| `stale` | `true` if the provider failed and an expired cached copy was returned instead |
+| `fetched_at` | When the stored copy was fetched (UTC) |
+| `cached` | `true` if served from SQLite without calling the provider (it was already fetched today) |
+| `stale` | `true` if today's provider call failed and an older stored copy (from a previous day) was returned |
 | `errors` | Per-section problems: `{ section, code, message, retry_after_seconds? }` |
 
-**Partial failure** still returns `200`: sections that could not be fetched are left out (or returned `stale` from cache) and listed in `errors`. Error codes:
+**Partial failure** still returns `200`: sections that could not be fetched are left out (or returned `stale` from storage) and listed in `errors`. A failed call does not count as today's fetch, so the next request tries again. Error codes:
 
 | `code` | Meaning |
 |---|---|
@@ -201,11 +247,11 @@ Example with no token configured (real response):
 
 Other statuses: `404` unknown stock, `400` unknown section, `503` fundamentals disabled (`fundamentals.enabled: false`).
 
-**Quota:** a stock's first full fetch costs about 5 Tapetide calls (symbol lookup plus 4 sections); cached views cost none.
+**Quota:** a stock's first fetch costs about 5 Tapetide calls (symbol lookup plus 4 sections); later days cost 4 (the symbol is stored). Repeat views on the same day cost none.
 
 ```sh
 curl 'http://localhost:5100/api/stocks/1/fundamentals'
-curl 'http://localhost:5100/api/stocks/1/fundamentals?sections=profile&refresh=true'
+curl 'http://localhost:5100/api/stocks/1/fundamentals?sections=profile,pledge'
 ```
 
 ---
@@ -508,9 +554,8 @@ Category names configured in `config/scraping.json`, in config order (what the d
 2. `GET /stocks/leaderboard?category=Small%20Cap&limit=20`.
 3. `GET /categories/Small%20Cap/changes` → alert on `removed` stocks you hold.
 
-**Stock detail (on demand)**
+**Stock detail** (client route `/stock/:stockId`)
 
-1. `GET /stocks/:id/fundamentals` → ratios, financials, shareholding, pledge.
-2. `GET /stocks/:id/analysis?held=true|false` → verdict with reasons.
-
-Both detail calls are cached, so opening the same stock again is instant and costs no provider quota until the data expires.
+1. `GET /stocks/:id` → stored scrape data (holding funds, category coverage, changes). Instant, no external calls.
+2. On the user's request: `GET /stocks/:id/fundamentals` → ratios, financials, shareholding, pledge (provider called at most once per stock per day).
+3. Optionally: `GET /stocks/:id/analysis?held=true|false` → AI verdict with reasons.

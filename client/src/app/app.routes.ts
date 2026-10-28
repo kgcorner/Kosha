@@ -8,6 +8,11 @@ export const routes: Routes = [
     loadComponent: () => import('./features/leaderboard/leaderboard').then((m) => m.Leaderboard),
   },
   {
+    path: 'stock/:stockId',
+    title: 'Stock · Kosha',
+    loadComponent: () => import('./features/stock-detail/stock-detail').then((m) => m.StockDetail),
+  },
+  {
     path: 'signals',
     title: 'Sell signals · Kosha',
     loadComponent: () => import('./features/sell-signals/sell-signals').then((m) => m.SellSignals),

@@ -40,7 +40,7 @@ Keys are read from the environment only. Strict JSON-schema output is used when 
 
 ### Fundamentals (Tapetide, on demand)
 
-Set `TAPETIDE_TOKEN` (personal token from https://tapetide.com/settings/tokens) before `npm start`. The token is read from the environment only; never put it in a config file. Without it the endpoint serves cached data only. Stocks are matched to Tapetide symbols by ISIN (cached in `stocks.symbol`). A first view of a stock costs ~5 calls (symbol search + 4 sections); repeat views within the TTL cost nothing. The free plan allows 50 calls/day.
+Set `TAPETIDE_TOKEN` (personal token from https://tapetide.com/settings/tokens) before `npm start`. The token is read from the environment only; never put it in a config file. Without it the endpoint serves cached data only. Stocks are matched to Tapetide symbols by ISIN (cached in `stocks.symbol`). A stock's first fetch costs ~5 calls (symbol search + 4 sections); each later day ~4; repeat views on the same day cost nothing. The free plan allows 50 calls/day.
 
 ### Default source: AMC disclosures (`fund-disclosures`)
 
@@ -61,7 +61,8 @@ To add a source, implement `SourceAdapter` in `src/scrapers/sourceAdapter.js`, i
 
 - `GET /api/stocks/leaderboard?limit=20&offset=0&category=Small%20Cap` — consensus ranking with AI thesis/pros/cons, the stock's `stock_url` and its scraped `metrics`; `category` scopes the ranking to that category's funds (and each row carries a `categories` list).
 - `GET /api/stocks/:id/metrics` — the full metric set scraped from one stock's detail page (price, ratios, financials, shareholding, peers) plus per-metric `provenance`; `404` if the stock is unknown.
-- `GET /api/stocks/:id/fundamentals?refresh=false&sections=profile,financials,shareholding,pledge` — **lazy** fundamentals from Tapetide (quote + valuation ratios, financial statements, quarterly shareholding, promoter pledge) plus Kosha's `fund_signal` (funds holding it, overall and per category). Never called by the scrape job; each section is cached in `stock_fundamentals` (profile 24h, the rest 30 days — `fundamentals.ttl_hours` in `config/app.json`). When the provider fails or the quota is used up, the last cached copy is returned with `stale: true` and an `errors` entry.
+- `GET /api/stocks/:id` — everything the scrape stored about one stock (holding funds with weight/shares/value, category coverage, recent changes). No external calls.
+- `GET /api/stocks/:id/fundamentals?sections=profile,financials,shareholding,pledge` — **lazy** fundamentals from Tapetide plus Kosha's `fund_signal`. Never called by the scrape job. Every response is stored in `stock_fundamentals`, and the provider is called **at most once per stock per section per calendar day** (`fundamentals.timezone`, default IST); later requests that day are served from the database. When the provider fails, the last stored copy is returned with `stale: true` and an `errors` entry.
 - `GET /api/stocks/:id/analysis?held=false&refresh=false` — **lazy** LLM verdict (BUY/IGNORE, or HOLD/SELL when `held=true`) from fund signal + fundamentals; cached until inputs change. 503 when no LLM is configured, 429 when rate-limited, 502 on model errors.
 - `GET /api/funds` — tracked funds and their last scrape timestamp.
 - `GET /api/categories` — distinct fund categories (leaderboard filter options).

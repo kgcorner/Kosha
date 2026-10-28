@@ -16,6 +16,22 @@ export function createApiRouter({ repositories, scrapeJob, dryRunService, fundam
     }
   });
 
+  // Everything the scrape stored about one stock (no external calls): ranking,
+  // per-category coverage, every holding fund with weight/quantity/value,
+  // recent category changes, and when fundamentals were last fetched.
+  router.get("/stocks/:id", (request, response, next) => {
+    try {
+      const id = Number(request.params.id);
+      const detail = Number.isInteger(id) ? repositories.stocks.detail(id) : null;
+      if (!detail) {
+        return response.status(404).json({ error: `Stock #${request.params.id} not found` });
+      }
+      response.json({ ...detail, fund_signal: repositories.aggregation.signalFor(id) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   // Full metric set scraped from a stock's own detail page (price, valuation
   // ratios, financials, shareholding, peers). 404 until that stock has been
   // visited by a scrape.
@@ -45,8 +61,8 @@ export function createApiRouter({ repositories, scrapeJob, dryRunService, fundam
   // shareholding, promoter pledge) plus Kosha's fund-consensus signal, for the
   // UI detail view and LLM analysis. Calls the provider only for missing or
   // expired sections; everything is cached per section in SQLite.
-  //   ?refresh=true            ignore the cache
   //   ?sections=profile,pledge  fetch a subset
+  // The provider is called at most once per stock per section per day.
   router.get("/stocks/:id/fundamentals", (request, response, next) => {
     try {
       if (!fundamentalsService) {
@@ -56,12 +72,11 @@ export function createApiRouter({ repositories, scrapeJob, dryRunService, fundam
       if (!Number.isInteger(id)) {
         return response.status(404).json({ error: `Stock #${request.params.id} not found` });
       }
-      const refresh = ["1", "true", "yes"].includes(String(request.query.refresh ?? "").toLowerCase());
       const sections = typeof request.query.sections === "string" && request.query.sections.trim()
         ? request.query.sections.split(",").map((value) => value.trim()).filter(Boolean)
         : null;
       fundamentalsService
-        .getFundamentals(id, { refresh, sections })
+        .getFundamentals(id, { sections })
         .then((result) => {
           if (!result) return response.status(404).json({ error: `Stock #${request.params.id} not found` });
           response.json(result);

@@ -47,6 +47,6 @@ export interface LeaderboardRow {
   pros: string[];
   /** AI cons; `[]` until AI enrichment runs. */
   cons: string[];
-  /** Backend-local timestamp `"YYYY-MM-DD HH:MM:SS"`; `null` until analyzed. */
+  /** Backend UTC timestamp `"YYYY-MM-DD HH:MM:SS"`; `null` until analyzed. */
   last_analyzed_at: string | null;
 }

@@ -13,9 +13,10 @@ export interface FormatTimestampOptions {
 /**
  * Formats a backend timestamp (`"YYYY-MM-DD HH:MM:SS"`) for display.
  *
- * The backend emits local-time strings without a zone; `new Date('2026-10-15 06:12:44')`
- * is implementation-dependent (Safari may return `Invalid Date`), so the string is
- * parsed via explicit date parts and treated as **local time**.
+ * The backend emits SQLite `CURRENT_TIMESTAMP` strings, which are **UTC** without a
+ * zone marker; `new Date('2026-10-15 06:12:44')` is implementation-dependent (Safari
+ * may return `Invalid Date`) and would read them as local time, so the string is
+ * parsed via explicit date parts as UTC and then displayed in the viewer's zone.
  *
  * - `null`/empty → `'—'`.
  * - unparseable → the raw string (never throws).
@@ -51,7 +52,7 @@ export function isParseableTimestamp(value: string | null | undefined): boolean 
 }
 
 /**
- * Parses a backend `"YYYY-MM-DD HH:MM:SS"` string as **local time** into a `Date`.
+ * Parses a backend `"YYYY-MM-DD HH:MM:SS"` string (UTC) into a `Date`.
  * Returns `null` for `null`/empty/malformed input (never throws).
  */
 export function parseBackendTimestamp(value: string | null): Date | null {
@@ -64,12 +65,14 @@ export function parseBackendTimestamp(value: string | null): Date | null {
   }
   const [, year, month, day, hour, minute, second] = match;
   const date = new Date(
-    Number(year),
-    Number(month) - 1,
-    Number(day),
-    Number(hour),
-    Number(minute),
-    Number(second),
+    Date.UTC(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second),
+    ),
   );
   return Number.isNaN(date.getTime()) ? null : date;
 }

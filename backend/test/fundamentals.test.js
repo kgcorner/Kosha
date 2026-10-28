@@ -134,21 +134,38 @@ test("first request resolves the symbol by ISIN, fetches every section and cache
   }
 });
 
-test("only expired sections are refetched; refresh=true refetches all", async () => {
+test("the provider is called at most once per stock per section per calendar day (IST)", async () => {
+  // Rows are stamped by SQLite with the real time; freshness is driven by
+  // moving the service's clock forward a day.
   let clock = Date.now();
-  const { db, stockId, client, service } = setup({ now: () => clock });
+  const { db, client, stockId, service, repositories } = setup({ now: () => clock });
   try {
     await service.getFundamentals(stockId);
-    clock += 25 * 60 * 60 * 1000; // past the 24h profile TTL, within 30 days
-    const before = client.calls.length;
-    const result = await service.getFundamentals(stockId);
-    assert.deepEqual(client.calls.slice(before).map((c) => c.name), ["get_company_profile"]);
-    assert.equal(result.fundamentals.profile.cached, false);
-    assert.equal(result.fundamentals.pledge.cached, true);
+    const afterFirst = client.calls.length;
 
-    const beforeRefresh = client.calls.length;
-    await service.getFundamentals(stockId, { refresh: true, sections: ["pledge"] });
-    assert.deepEqual(client.calls.slice(beforeRefresh).map((c) => c.name), ["get_promoter_pledge"]);
+    // Same day, many views: no external calls, everything served from SQLite.
+    for (let i = 0; i < 3; i += 1) {
+      const again = await service.getFundamentals(stockId);
+      assert.equal(again.fundamentals.profile.cached, true);
+    }
+    assert.equal(client.calls.length, afterFirst);
+
+    // Next calendar day: every section is fetched once more (symbol stays cached).
+    clock += 24 * 60 * 60 * 1000;
+    const nextDay = await service.getFundamentals(stockId);
+    assert.deepEqual(
+      client.calls.slice(afterFirst).map((c) => c.name),
+      ["get_company_profile", "get_financials", "get_shareholding", "get_promoter_pledge"]
+    );
+    assert.equal(nextDay.fundamentals.financials.cached, false);
+    assert.equal(nextDay.cache_policy.timezone, "Asia/Kolkata");
+
+    // Day boundary is the configured timezone's midnight, not UTC's.
+    const ist = new FundamentalsService({ repositories, client, timezone: "Asia/Kolkata", now: () => Date.parse("2026-10-28T18:40:00Z") });
+    assert.equal(ist.fetchedToday({ fetched_at: "2026-10-28 18:35:00" }), true);   // both 29 Oct IST
+    assert.equal(ist.fetchedToday({ fetched_at: "2026-10-28 18:20:00" }), false);  // 23:50 on 28 Oct IST
+    const utc = new FundamentalsService({ repositories, client, timezone: "UTC", now: () => Date.parse("2026-10-28T18:40:00Z") });
+    assert.equal(utc.fetchedToday({ fetched_at: "2026-10-28 18:20:00" }), true);
   } finally {
     db.close();
   }
@@ -167,7 +184,7 @@ test("quota errors fall back to stale cached data and stop further calls", async
   const { db, stockId, client, service } = setup({ handlers, now: () => clock });
   try {
     await service.getFundamentals(stockId);
-    clock += 31 * 24 * 60 * 60 * 1000; // everything expired
+    clock += 24 * 60 * 60 * 1000; // next day: everything is due again
     quotaExhausted = true;
     const before = client.calls.length;
     const result = await service.getFundamentals(stockId);
@@ -231,6 +248,7 @@ test("GET /api/stocks/:id/fundamentals serves data, 404s unknown stocks, 400s ba
   try {
     await withServer({ repositories, fundamentalsService: service }, async (base) => {
       const ok = await fetch(`${base}/api/stocks/${stockId}/fundamentals?sections=profile,pledge`);
+      assert.equal((await fetch(`${base}/api/stocks/${stockId}/fundamentals?sections=profile`)).status, 200);
       assert.equal(ok.status, 200);
       const body = await ok.json();
       assert.deepEqual(Object.keys(body.fundamentals), ["profile", "pledge"]);

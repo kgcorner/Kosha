@@ -90,11 +90,8 @@ function createFundamentalsService(configuration = {}, repos) {
     baseUrl: configuration.base_url ?? "https://mcp.tapetide.com",
     timeoutMs: configuration.timeout_ms ?? 30000
   });
-  const ttl = configuration.ttl_hours ?? {};
   const sections = Object.fromEntries(
-    Object.entries(DEFAULT_SECTIONS)
-      .filter(([name]) => !configuration.sections || configuration.sections.includes(name))
-      .map(([name, definition]) => [name, { ...definition, ttl_hours: ttl[name] ?? definition.ttl_hours }])
+    Object.entries(DEFAULT_SECTIONS).filter(([name]) => !configuration.sections || configuration.sections.includes(name))
   );
-  return new FundamentalsService({ repositories: repos, client, sections });
+  return new FundamentalsService({ repositories: repos, client, sections, timezone: configuration.timezone });
 }

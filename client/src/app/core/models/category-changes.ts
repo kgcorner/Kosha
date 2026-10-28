@@ -13,7 +13,7 @@ export interface CategoryChange {
 export interface CategoryChanges {
   category: string;
   run_id: number | null;
-  /** Backend-local timestamp `"YYYY-MM-DD HH:MM:SS"`. */
+  /** Backend UTC timestamp `"YYYY-MM-DD HH:MM:SS"`. */
   run_at: string | null;
   /** Stocks removed since the previous run — the SELL SIGNAL. */
   removed: CategoryChange[];

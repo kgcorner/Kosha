@@ -140,13 +140,16 @@
                     type="button"
                     class="stock-toggle"
                     [attr.aria-expanded]="isExpanded(row)"
+                    [attr.aria-label]="(isExpanded(row) ? 'Collapse ' : 'Expand ') + row.name"
                     (click)="toggleExpanded(row)"
                   >
                     <span class="stock-toggle__caret" aria-hidden="true">
                       {{ isExpanded(row) ? '▾' : '▸' }}
                     </span>
-                    <span class="stock-toggle__name">{{ row.name }}</span>
                   </button>
+                  <a class="stock-name-link" [routerLink]="['/stock', row.stock_id]">{{
+                    row.name
+                  }}</a>
                   @if (row.categories.length > 0) {
                     <span class="badge badge--muted">{{ row.categories.join(' · ') }}</span>
                   }

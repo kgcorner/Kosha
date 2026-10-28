@@ -96,9 +96,10 @@ export function createRepositories(db) {
         const replace = db.transaction((items) => {
           db.prepare("DELETE FROM fund_holdings WHERE fund_id = ?").run(fundId);
           const insert = db.prepare(`
-            INSERT INTO fund_holdings (fund_id, stock_id, weight_percentage)
-            VALUES (?, ?, ?)
+            INSERT INTO fund_holdings (fund_id, stock_id, weight_percentage, quantity, market_value_cr, as_of)
+            VALUES (?, ?, ?, ?, ?, ?)
           `);
+          const setSector = db.prepare("UPDATE stocks SET sector = ? WHERE id = ? AND sector IS NULL");
           // A fund's holding list can legitimately contain the same stock more than
           // once (e.g. Groww renders repeated/duplicate rows). fund_holdings has a
           // UNIQUE(fund_id, stock_id) constraint, so collapse to one row per stock
@@ -112,7 +113,15 @@ export function createRepositories(db) {
               continue;
             }
             seen.add(stockId);
-            insert.run(fundId, stockId, holding.weightPercentage);
+            insert.run(
+              fundId,
+              stockId,
+              holding.weightPercentage ?? null,
+              finiteOrNull(holding.quantity),
+              finiteOrNull(holding.marketValueCr),
+              holding.asOf ?? holding.month ?? null
+            );
+            if (holding.sector) setSector.run(holding.sector, stockId);
           }
           if (skipped > 0) {
             console.warn(
@@ -174,7 +183,53 @@ export function createRepositories(db) {
           : db.prepare(base).all();
       },
       getById(stockId) {
-        return db.prepare("SELECT id, name, url, isin, symbol FROM stocks WHERE id = ?").get(stockId) ?? null;
+        return db.prepare("SELECT id, name, url, isin, symbol, sector FROM stocks WHERE id = ?").get(stockId) ?? null;
+      },
+      /**
+       * Everything the scrape stored about one stock, for the detail page:
+       * ranking, per-category coverage, every holding fund with weight,
+       * quantity and value, recent category add/remove events, and when
+       * fundamentals were last fetched. Null for an unknown stock.
+       */
+      detail(stockId) {
+        const stock = this.getById(stockId);
+        if (!stock) return null;
+        const holdings = db.prepare(`
+          SELECT f.id AS fund_id, f.name AS fund_name, f.category,
+                 h.weight_percentage, h.quantity, h.market_value_cr, h.as_of
+          FROM fund_holdings h
+          JOIN funds f ON f.id = h.fund_id
+          WHERE h.stock_id = ?
+          ORDER BY h.weight_percentage IS NULL, h.weight_percentage DESC, f.name
+        `).all(stockId);
+        const changes = db.prepare(`
+          SELECT c.category, c.change_type, r.started_at AS run_at, c.run_id
+          FROM category_stock_changes c
+          JOIN category_change_runs r ON r.id = c.run_id
+          WHERE c.stock_id = ?
+          ORDER BY c.run_id DESC, c.category
+          LIMIT 50
+        `).all(stockId);
+        const fundamentals = db.prepare(
+          "SELECT section, fetched_at FROM stock_fundamentals WHERE stock_id = ? ORDER BY section"
+        ).all(stockId);
+        const asOfDates = [...new Set(holdings.map((row) => row.as_of).filter(Boolean))].sort().reverse();
+        const sum = (key) => {
+          const values = holdings.map((row) => row[key]).filter((value) => typeof value === "number");
+          return values.length ? values.reduce((total, value) => total + value, 0) : null;
+        };
+        return {
+          stock: { id: stock.id, name: stock.name, isin: stock.isin ?? null, symbol: stock.symbol ?? null, sector: stock.sector ?? null, url: stock.url ?? null },
+          totals: {
+            funds_holding: new Set(holdings.map((row) => row.fund_id)).size,
+            total_quantity: sum("quantity"),
+            total_market_value_cr: sum("market_value_cr"),
+            latest_as_of: asOfDates[0] ?? null
+          },
+          holdings,
+          recent_changes: changes,
+          fundamentals_cached: fundamentals
+        };
       },
       setSymbol(stockId, symbol) {
         db.prepare("UPDATE stocks SET symbol = ? WHERE id = ?").run(symbol, stockId);
@@ -267,7 +322,7 @@ export function createRepositories(db) {
           JOIN funds f ON f.id = h.fund_id
           WHERE h.stock_id = ? AND f.category IS NOT NULL
           GROUP BY f.category
-          ORDER BY funds_holding DESC
+          ORDER BY funds_holding DESC, f.category
         `).all(stockId);
         return { ...(overall ?? { funds_holding: 0, rank: null }), categories };
       },
@@ -532,4 +587,8 @@ function parseFundamentalsRow(row) {
 function parseAnalysisRow(row) {
   if (!row) return null;
   return { ...row, held: Boolean(row.held), result: JSON.parse(row.result) };
+}
+
+function finiteOrNull(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }

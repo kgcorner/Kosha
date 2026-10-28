@@ -1,0 +1,58 @@
+@switch (kind()) {
+  @case ('empty') {
+    <span class="text-muted">—</span>
+  }
+  @case ('scalar') {
+    <span>{{ scalar(value()) }}</span>
+  }
+  @case ('list') {
+    <span>
+      @for (item of items(); track $index) {
+        {{ scalar(item) }}
+        @if (!$last) {
+          <span class="dv-sep">, </span>
+        }
+      }
+    </span>
+  }
+  @case ('table') {
+    <div class="dv-table-wrap">
+      <table class="dv-table">
+        <thead>
+          <tr>
+            @for (column of columns(); track column) {
+              <th scope="col">{{ label(column) }}</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of rows(); track $index) {
+            <tr>
+              @for (column of columns(); track column) {
+                <td [class.num]="isNumber(row[column])">{{ cell(row[column]) }}</td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    @if (hiddenCount() > 0) {
+      <p class="text-muted dv-more">+{{ hiddenCount() }} more not shown</p>
+    }
+  }
+  @case ('object') {
+    <dl class="dv-object" [class.dv-object--nested]="depth() > 0">
+      @for (entry of entries(); track entry.key) {
+        <div class="dv-row" [class.dv-row--block]="isNested(entry.value)">
+          <dt>{{ label(entry.key) }}</dt>
+          <dd>
+            <app-data-view [value]="entry.value" [depth]="depth() + 1" />
+          </dd>
+        </div>
+      }
+    </dl>
+  }
+  @default {
+    <code class="dv-json">{{ json() }}</code>
+  }
+}

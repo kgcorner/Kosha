@@ -1,32 +1,37 @@
 import { TapetideError } from "./tapetideClient.js";
 
-/**
- * Sections fetched from Tapetide, each with its own cache TTL. Price-sensitive
- * data (profile: quote + valuation ratios) goes stale fast; statements,
- * shareholding and pledges only change quarterly.
- */
+/** Sections fetched from Tapetide and the tool that provides each. */
 export const DEFAULT_SECTIONS = Object.freeze({
-  profile: { tool: "get_company_profile", args: {}, ttl_hours: 24 },
-  financials: { tool: "get_financials", args: {}, ttl_hours: 24 * 30 },
-  shareholding: { tool: "get_shareholding", args: { type: "quarterly" }, ttl_hours: 24 * 30 },
-  pledge: { tool: "get_promoter_pledge", args: {}, ttl_hours: 24 * 30 }
+  profile: { tool: "get_company_profile", args: {} },
+  financials: { tool: "get_financials", args: {} },
+  shareholding: { tool: "get_shareholding", args: { type: "quarterly" } },
+  pledge: { tool: "get_promoter_pledge", args: {} }
 });
+
+export const DEFAULT_TIMEZONE = "Asia/Kolkata";
 
 /**
  * Lazy, on-demand stock fundamentals. Nothing here runs during a scrape:
- * Tapetide is called only when a client asks for one stock's fundamentals,
- * and every section is cached in SQLite so repeat views cost no quota.
+ * Tapetide is called only when a client asks for one stock's fundamentals.
  *
- * If Tapetide fails (quota exhausted, outage, no token) the last cached copy
- * of each section is returned and marked `stale`, alongside an `errors` list.
+ * Cache rule: every response is stored in SQLite, and the provider is called
+ * for a section only when its stored copy was fetched on an earlier calendar
+ * day (in `timezone`, IST by default). So each stock costs at most one external
+ * call per section per day, however often it is viewed.
+ *
+ * If Tapetide fails (quota exhausted, outage, no token) the last stored copy
+ * of each section is returned and marked `stale`, alongside an `errors` list;
+ * the next view that day tries again.
  */
 export class FundamentalsService {
-  constructor({ repositories, client, sections = DEFAULT_SECTIONS, now = Date.now, provider = "tapetide" }) {
+  constructor({ repositories, client, sections = DEFAULT_SECTIONS, now = Date.now, provider = "tapetide", timezone = DEFAULT_TIMEZONE }) {
     this.repositories = repositories;
     this.client = client;
     this.sections = sections;
     this.now = now;
     this.provider = provider;
+    this.timezone = timezone;
+    this.dayFormat = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" });
     this.inFlight = new Map();
   }
 
@@ -35,15 +40,15 @@ export class FundamentalsService {
   }
 
   /** Returns null when the stock does not exist. */
-  async getFundamentals(stockId, { refresh = false, sections = null } = {}) {
-    const key = `${stockId}|${refresh}|${(sections ?? []).join(",")}`;
+  async getFundamentals(stockId, { sections = null } = {}) {
+    const key = `${stockId}|${(sections ?? []).join(",")}`;
     if (this.inFlight.has(key)) return this.inFlight.get(key);
-    const promise = this.load(stockId, { refresh, sections }).finally(() => this.inFlight.delete(key));
+    const promise = this.load(stockId, { sections }).finally(() => this.inFlight.delete(key));
     this.inFlight.set(key, promise);
     return promise;
   }
 
-  async load(stockId, { refresh, sections }) {
+  async load(stockId, { sections }) {
     const stock = this.repositories.stocks.getById(stockId);
     if (!stock) return null;
 
@@ -56,7 +61,7 @@ export class FundamentalsService {
     for (const name of wanted) {
       const definition = this.sections[name];
       const hit = cached.get(name);
-      if (!refresh && hit && this.isFresh(hit, definition)) {
+      if (hit && this.fetchedToday(hit)) {
         result[name] = shape(hit, { cached: true, stale: false });
         continue;
       }
@@ -76,7 +81,7 @@ export class FundamentalsService {
         if (isFatal(error)) {
           for (const rest of wanted.slice(wanted.indexOf(name) + 1)) {
             const restHit = cached.get(rest);
-            if (restHit) result[rest] = shape(restHit, { cached: true, stale: !this.isFresh(restHit, this.sections[rest]) });
+            if (restHit) result[rest] = shape(restHit, { cached: true, stale: !this.fetchedToday(restHit) });
           }
           break;
         }
@@ -88,6 +93,7 @@ export class FundamentalsService {
       provider: this.provider,
       fund_signal: this.repositories.aggregation.signalFor(stock.id),
       fundamentals: result,
+      cache_policy: { rule: "one provider call per stock per section per calendar day", timezone: this.timezone, today: this.dayKey(this.now()) },
       errors
     };
   }
@@ -101,10 +107,16 @@ export class FundamentalsService {
     return requested;
   }
 
-  isFresh(row, definition) {
-    const fetchedAt = Date.parse(`${row.fetched_at}${row.fetched_at?.endsWith("Z") ? "" : "Z"}`);
+  // SQLite stores UTC "YYYY-MM-DD HH:MM:SS"; compare calendar days in the
+  // configured timezone so "today" matches the user's day, not UTC's.
+  fetchedToday(row) {
+    const fetchedAt = Date.parse(`${String(row.fetched_at ?? "").replace(" ", "T")}${row.fetched_at?.endsWith("Z") ? "" : "Z"}`);
     if (!Number.isFinite(fetchedAt)) return false;
-    return this.now() - fetchedAt < (definition.ttl_hours ?? 24) * 60 * 60 * 1000;
+    return this.dayKey(fetchedAt) === this.dayKey(this.now());
+  }
+
+  dayKey(epochMs) {
+    return this.dayFormat.format(new Date(epochMs));
   }
 
   // ISIN is unambiguous; Tapetide's search accepts it. Fall back to the name

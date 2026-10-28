@@ -20,12 +20,7 @@
       "shareholding",
       "pledge"
     ],
-    "ttl_hours": {
-      "profile": 24,
-      "financials": 720,
-      "shareholding": 720,
-      "pledge": 720
-    }
+    "timezone": "Asia/Kolkata"
   },
   "llm": {
     "provider": "openai-compatible",

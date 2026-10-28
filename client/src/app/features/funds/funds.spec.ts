@@ -92,11 +92,8 @@ describe('Funds', () => {
   });
 
   it('marks a recently scraped fund as up to date', () => {
-    const now = new Date();
-    const pad = (value: number) => String(value).padStart(2, '0');
-    const recent = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(
-      now.getHours(),
-    )}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    // Backend timestamps are UTC (SQLite CURRENT_TIMESTAMP).
+    const recent = new Date().toISOString().slice(0, 19).replace('T', ' ');
     const fixture = createWithFunds([fund({ last_scraped_at: recent })]);
 
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('Up to date');
